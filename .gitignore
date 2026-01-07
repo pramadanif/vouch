@@ -13,6 +13,11 @@
 
 # production
 /build
+/contracts/broadcasts
+/contracts/cache
+/contracts/artifacts
+/contracts/typechain-types
+/contracts/dist
 
 # misc
 .DS_Store

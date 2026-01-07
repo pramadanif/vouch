@@ -1,0 +1,44 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum EscrowStatus {
+  CREATED
+  WAITING_PAYMENT
+  FUNDED
+  RELEASED
+  REFUNDED
+  CANCELLED
+}
+
+model Escrow {
+  id               String       @id @default(uuid())
+  escrowId         Int?         @map("escrow_id") // On-chain escrow ID
+  sellerAddress    String       @map("seller_address")
+  buyerAddress     String?      @map("buyer_address")
+  itemName         String       @map("item_name")
+  itemDescription  String?      @map("item_description") // NEW: Item description field
+  itemImage        String?      @map("item_image")
+  amountUsdc       String       @map("amount_usdc")
+  amountIdr        String       @map("amount_idr")
+  releaseDuration  Int          @map("release_duration") // in seconds
+  releaseTime      Int?         @map("release_time") // Unix timestamp
+  status           EscrowStatus @default(CREATED)
+  xenditInvoiceId  String?      @map("xendit_invoice_id")
+  xenditInvoiceUrl String?      @map("xendit_invoice_url")
+  txHash           String?      @map("tx_hash")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  @@index([sellerAddress])
+  @@index([status])
+  @@map("escrows")
+}

@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Database
+data/
+
+# Environment
+.env
+
+# Logs
+*.log
+
+/src/generated/prisma
