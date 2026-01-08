@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { ShieldCheck, Wallet, Clock, CheckCircle, AlertCircle, Loader2, ExternalLink } from 'lucide-react';
+import { Wallet, Clock, CheckCircle, AlertCircle, Loader2, ExternalLink, Copy, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { useAccount, useConnect, useDisconnect } from 'wagmi';
 import Button from '@/components/Button';
@@ -16,11 +16,11 @@ export default function DashboardPage() {
     const [escrows, setEscrows] = useState<SellerEscrowsResponse['escrows']>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
+    const [copiedId, setCopiedId] = useState<string | null>(null);
+    const [isMounted, setIsMounted] = useState(false);
 
-    // Fetch escrows when connected
     const fetchEscrows = useCallback(async () => {
         if (!address) return;
-
         setIsLoading(true);
         try {
             const data = await api.getSellerEscrows(address);
@@ -33,158 +33,113 @@ export default function DashboardPage() {
     }, [address]);
 
     useEffect(() => {
-        if (isConnected && address) {
-            fetchEscrows();
-        }
+        setIsMounted(true);
+        if (isConnected && address) fetchEscrows();
     }, [isConnected, address, fetchEscrows]);
 
-    // Handle wallet connection
     const handleConnect = () => {
         const injected = connectors.find(c => c.id === 'injected');
-        if (injected) {
-            connect({ connector: injected });
-        }
+        if (injected) connect({ connector: injected });
     };
 
-    // Format address
     const formatAddress = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
-
-    // Format price
     const formatPrice = (amount: string) => `Rp ${parseInt(amount).toLocaleString('id-ID')}`;
+    const formatDate = (timestamp: number) => new Date(timestamp * 1000).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
 
-    // Format date
-    const formatDate = (timestamp: number) => {
-        return new Date(timestamp * 1000).toLocaleDateString('id-ID', {
-            day: 'numeric',
-            month: 'short',
-            year: 'numeric'
-        });
-    };
-
-    // Get time remaining
     const getTimeRemaining = (releaseTime: number | null) => {
         if (!releaseTime) return null;
-        const now = Math.floor(Date.now() / 1000);
-        const remaining = releaseTime - now;
+        const remaining = releaseTime - Math.floor(Date.now() / 1000);
         if (remaining <= 0) return 'Ready';
-
         const days = Math.floor(remaining / 86400);
         const hours = Math.floor((remaining % 86400) / 3600);
-
-        if (days > 0) return `${days}d ${hours}h`;
-        return `${hours}h`;
+        return days > 0 ? `${days}d ${hours}h` : `${hours}h`;
     };
 
-    // Status badge colors
-    const getStatusColor = (status: string) => {
+    const getStatusConfig = (status: string) => {
         switch (status) {
-            case 'FUNDED': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-            case 'RELEASED': return 'bg-blue-100 text-blue-700 border-blue-200';
-            case 'CANCELLED': return 'bg-red-100 text-red-700 border-red-200';
-            default: return 'bg-amber-100 text-amber-700 border-amber-200';
+            case 'FUNDED': return { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', label: 'Secured' };
+            case 'RELEASED': return { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', label: 'Complete' };
+            case 'CANCELLED': return { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', label: 'Cancelled' };
+            default: return { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', label: 'Pending' };
         }
     };
 
-    // Status labels
-    const getStatusLabel = (status: string) => {
-        switch (status) {
-            case 'CREATED':
-            case 'WAITING_PAYMENT': return 'Waiting for payment';
-            case 'FUNDED': return 'Payment Secured';
-            case 'RELEASED': return 'Completed';
-            case 'CANCELLED': return 'Cancelled';
-            default: return status;
-        }
-    };
-
-    // Handle release
     const handleRelease = async (id: string) => {
-        try {
-            await api.releaseFunds(id);
-            fetchEscrows();
-        } catch (err: any) {
-            alert(err.message);
-        }
+        try { await api.releaseFunds(id); fetchEscrows(); }
+        catch (err: any) { alert(err.message); }
     };
 
-    // Calculate Stats
-    const totalRevenue = escrows
-        .filter(e => e.status === 'RELEASED')
-        .reduce((acc, curr) => acc + parseInt(curr.amountIdr), 0);
+    const handleCopyLink = (id: string) => {
+        navigator.clipboard.writeText(`${window.location.origin}/pay/${id}`);
+        setCopiedId(id);
+        setTimeout(() => setCopiedId(null), 2000);
+    };
 
+    // Stats
+    const totalRevenue = escrows.filter(e => e.status === 'RELEASED').reduce((acc, curr) => acc + parseInt(curr.amountIdr), 0);
     const activeEscrows = escrows.filter(e => e.status === 'FUNDED' || e.status === 'WAITING_PAYMENT').length;
     const completedEscrows = escrows.filter(e => e.status === 'RELEASED').length;
 
+    if (!isMounted) return null;
+
     if (!isConnected) {
         return (
-            <div className="min-h-screen bg-brand-surface flex flex-col items-center justify-center p-6 relative overflow-hidden">
+            <div className="min-h-screen relative overflow-hidden">
+                {/* Rich Background like MyBCA */}
                 <div className="absolute inset-0 bg-brand-surfaceHighlight"></div>
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-brand-action/5 rounded-full blur-3xl pointer-events-none"></div>
 
-                <Link href="/" className="mb-8 flex items-center gap-3 z-10 group">
-                    <div className="relative w-12 h-12 transition-transform duration-300 group-hover:scale-105">
-                        <img
-                            src="/logo.png"
-                            alt="Vouch Logo"
-                            className="w-full h-full object-contain drop-shadow-lg"
-                        />
-                    </div>
-                    <span className="text-3xl font-bold tracking-tight text-brand-primary drop-shadow-sm">Vouch</span>
-                </Link>
+                {/* Abstract Blue Shapes */}
+                <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                    <div className="absolute top-0 right-0 w-[1000px] h-[1000px] rounded-full bg-brand-ice/60 blur-3xl -translate-y-1/2 translate-x-1/4 mix-blend-multiply"></div>
+                    <div className="absolute bottom-0 left-0 w-[800px] h-[800px] rounded-full bg-blue-100/50 blur-3xl translate-y-1/2 -translate-x-1/4 mix-blend-multiply"></div>
+                </div>
 
-                <FadeIn className="w-full max-w-md bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/40 p-10 text-center relative z-10 ring-1 ring-brand-border/50">
-                    <div className="w-20 h-20 bg-gradient-to-br from-blue-50 to-white rounded-2xl shadow-inner flex items-center justify-center mx-auto mb-8 border border-white/50">
-                        <Wallet size={32} className="text-brand-action" />
-                    </div>
-                    <h1 className="text-3xl font-bold text-brand-primary mb-3">Seller Dashboard</h1>
-                    <p className="text-brand-secondary text-base mb-10 leading-relaxed">
-                        Connect your wallet to manage your payment links and track revenue.
-                    </p>
+                <div className="relative z-10 min-h-screen flex flex-col items-center justify-center p-6">
+                    <Link href="/" className="mb-8 flex items-center gap-3">
+                        <img src="/logo.png" alt="Vouch" className="w-12 h-12 object-contain" />
+                        <span className="text-3xl font-bold text-brand-primary">Vouch</span>
+                    </Link>
 
-                    <Button
-                        onClick={handleConnect}
-                        variant="primary"
-                        size="lg"
-                        className="w-full shadow-lg shadow-brand-action/25 hover:shadow-brand-action/40 transition-all transform hover:-translate-y-0.5"
-                        disabled={isPending}
-                    >
-                        {isPending ? (
-                            <>
-                                <Loader2 className="animate-spin mr-2" size={20} />
-                                Connecting...
-                            </>
-                        ) : (
-                            'Connect Wallet'
-                        )}
-                    </Button>
-                </FadeIn>
+                    <FadeIn className="w-full max-w-md">
+                        <div className="bg-white rounded-2xl shadow-2xl p-10 text-center">
+                            <div className="w-16 h-16 bg-brand-ice/30 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                                <Wallet size={32} className="text-brand-action" />
+                            </div>
+                            <h1 className="text-2xl font-bold text-brand-primary mb-3">Seller Dashboard</h1>
+                            <p className="text-brand-secondary mb-8">Connect your wallet to manage payment links and track your revenue.</p>
+                            <Button onClick={handleConnect} variant="primary" size="lg" className="w-full" disabled={isPending}>
+                                {isPending ? <><Loader2 className="animate-spin mr-2" size={18} />Connecting...</> : 'Connect Wallet'}
+                            </Button>
+                        </div>
+                    </FadeIn>
+                </div>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen bg-brand-surface">
-            {/* Header */}
-            <header className="bg-white/80 backdrop-blur-xl border-b border-brand-border/50 sticky top-0 z-40">
-                <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-                    <Link href="/" className="flex items-center gap-3 group">
-                        <div className="relative w-8 h-8 transition-transform duration-300 group-hover:scale-105">
-                            <img
-                                src="/logo.png"
-                                alt="Vouch Logo"
-                                className="w-full h-full object-contain"
-                            />
-                        </div>
-                        <span className="text-xl font-bold tracking-tight text-brand-primary">Vouch</span>
-                    </Link>
+        <div className="min-h-screen relative overflow-hidden">
+            {/* Rich Background */}
+            <div className="absolute inset-0 bg-brand-surfaceHighlight"></div>
+            <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                <div className="absolute top-0 right-0 w-[1000px] h-[1000px] rounded-full bg-brand-ice/60 blur-3xl -translate-y-1/2 translate-x-1/4 mix-blend-multiply"></div>
+                <div className="absolute bottom-0 left-0 w-[800px] h-[800px] rounded-full bg-blue-100/50 blur-3xl translate-y-1/2 -translate-x-1/4 mix-blend-multiply"></div>
+            </div>
 
-                    <div className="flex items-center gap-4">
+            {/* Header */}
+            <header className="relative z-20 border-b border-brand-border/50 bg-white/50 backdrop-blur-xl">
+                <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+                    <Link href="/" className="flex items-center gap-3">
+                        <img src="/logo.png" alt="Vouch" className="w-9 h-9 object-contain" />
+                        <span className="text-xl font-bold text-brand-primary">Vouch</span>
+                    </Link>
+                    <div className="flex items-center gap-3">
                         <Link href="/create">
-                            <Button variant="primary" size="sm" className="shadow-md shadow-brand-action/10">+ Create Link</Button>
+                            <Button variant="outline" size="sm"><Plus size={16} className="mr-1" />New Link</Button>
                         </Link>
                         <button
                             onClick={() => disconnect()}
-                            className="text-xs bg-brand-ice/50 px-3 py-2 rounded-lg text-brand-secondary font-mono border border-brand-action/10 hover:bg-brand-ice transition-colors font-medium"
+                            className="text-sm px-4 py-2 rounded-lg bg-white border border-brand-border/50 text-brand-secondary font-mono hover:bg-brand-surfaceHighlight transition-colors shadow-sm"
                         >
                             {address ? formatAddress(address) : '...'}
                         </button>
@@ -192,134 +147,122 @@ export default function DashboardPage() {
                 </div>
             </header>
 
-            {/* Main Content */}
-            <main className="max-w-6xl mx-auto px-6 py-10">
-                <div className="flex items-center justify-between mb-8">
-                    <div>
-                        <h1 className="text-3xl font-bold text-brand-primary mb-1">Overview</h1>
-                        <p className="text-brand-secondary">Welcome back, here's what's happening today.</p>
-                    </div>
-                    <button onClick={fetchEscrows} className="text-sm font-medium text-brand-action hover:text-brand-primary transition-colors flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-brand-ice/50">
-                        <Loader2 size={14} className={isLoading ? 'animate-spin' : ''} />
-                        Refresh Data
-                    </button>
-                </div>
-
-                {/* Stats Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-                    <div className="bg-white rounded-2xl p-6 border border-brand-border shadow-sm">
-                        <p className="text-sm font-medium text-brand-secondary mb-2">Total Revenue (Verified)</p>
-                        <h3 className="text-3xl font-bold text-brand-primary">{formatPrice(totalRevenue.toString())}</h3>
-                    </div>
-                    <div className="bg-white rounded-2xl p-6 border border-brand-border shadow-sm">
-                        <p className="text-sm font-medium text-brand-secondary mb-2">Active Links</p>
-                        <h3 className="text-3xl font-bold text-brand-action">{activeEscrows}</h3>
-                    </div>
-                    <div className="bg-white rounded-2xl p-6 border border-brand-border shadow-sm">
-                        <p className="text-sm font-medium text-brand-secondary mb-2">Completed Transactions</p>
-                        <h3 className="text-3xl font-bold text-emerald-600">{completedEscrows}</h3>
-                    </div>
-                </div>
-
-                <div className="mb-6">
-                    <h2 className="text-xl font-bold text-brand-primary">Recent Links</h2>
-                </div>
-
-                {isLoading && escrows.length === 0 ? (
-                    <div className="text-center py-20 bg-white rounded-3xl border border-brand-border/50">
-                        <Loader2 className="animate-spin mx-auto mb-4 text-brand-action" size={32} />
-                        <p className="text-brand-secondary font-medium">Loading your payment links...</p>
-                    </div>
-                ) : error ? (
-                    <div className="text-center py-12 bg-red-50 rounded-3xl border border-red-100">
-                        <AlertCircle className="mx-auto mb-4 text-red-500" size={32} />
-                        <p className="text-red-700 font-medium">{error}</p>
-                    </div>
-                ) : escrows.length === 0 ? (
-                    <div className="text-center py-24 bg-white rounded-3xl border border-brand-border border-dashed">
-                        <div className="w-16 h-16 bg-brand-surfaceHighlight rounded-full flex items-center justify-center mx-auto mb-4">
-                            <Wallet className="text-brand-secondary/50" size={32} />
+            <main className="relative z-10 max-w-7xl mx-auto px-6 py-10">
+                {/* Welcome & Stats */}
+                <div className="mb-10">
+                    <div className="flex items-center justify-between mb-8">
+                        <div>
+                            <h1 className="text-3xl font-bold mb-2 text-brand-primary">Dashboard</h1>
+                            <p className="text-brand-secondary">Welcome back! Here's your business at a glance.</p>
                         </div>
-                        <h2 className="text-lg font-bold text-brand-primary mb-2">No payment links yet</h2>
-                        <p className="text-brand-secondary text-sm mb-8 max-w-sm mx-auto">Create your first payment link to start receiving secure payments from your customers.</p>
-                        <Link href="/create">
-                            <Button variant="primary" className="shadow-lg shadow-brand-action/20">Create First Link</Button>
-                        </Link>
+                        <button onClick={fetchEscrows} className="text-sm font-medium text-brand-secondary hover:text-brand-primary transition-colors flex items-center gap-2 px-4 py-2 rounded-lg bg-white hover:bg-brand-surfaceHighlight border border-brand-border/50 shadow-sm">
+                            <Loader2 size={14} className={isLoading ? 'animate-spin' : ''} />
+                            Refresh
+                        </button>
                     </div>
-                ) : (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        {escrows.map((escrow) => (
-                            <div key={escrow.id} className="bg-white rounded-2xl border border-brand-border p-6 shadow-sm hover:shadow-md transition-all hover:border-brand-action/30 group">
-                                <div className="flex items-start justify-between mb-5 pb-5 border-b border-brand-border/50">
-                                    <div className="flex items-start gap-4">
-                                        <div className="w-12 h-12 bg-brand-surfaceHighlight rounded-xl flex items-center justify-center flex-shrink-0">
-                                            <span className="text-xl">📦</span>
-                                        </div>
-                                        <div>
-                                            <h3 className="font-bold text-brand-primary text-lg group-hover:text-brand-action transition-colors">{escrow.itemName}</h3>
-                                            <p className="text-sm text-brand-secondary font-medium mt-1">{formatDate(escrow.createdAt)}</p>
-                                        </div>
-                                    </div>
-                                    <span className={`text-[10px] uppercase font-bold px-3 py-1.5 rounded-full border ${getStatusColor(escrow.status)}`}>
-                                        {getStatusLabel(escrow.status)}
-                                    </span>
-                                </div>
 
-                                <div className="grid grid-cols-2 gap-4 mb-6">
-                                    <div>
-                                        <p className="text-xs text-brand-secondary uppercase tracking-wider font-semibold mb-1">Amount</p>
-                                        <p className="font-bold text-brand-primary text-lg">{formatPrice(escrow.amountIdr)}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-xs text-brand-secondary uppercase tracking-wider font-semibold mb-1">Currency</p>
-                                        <p className="font-bold text-brand-primary">{escrow.currency || 'USDC'}</p>
-                                    </div>
-                                    {escrow.releaseTime && escrow.status === 'FUNDED' && (
-                                        <div className="col-span-2 bg-brand-surfaceHighlight p-3 rounded-lg flex items-center gap-3">
-                                            <div className="p-1.5 bg-white rounded-md shadow-sm text-brand-action">
-                                                <Clock size={16} />
-                                            </div>
-                                            <div>
-                                                <p className="text-xs text-brand-secondary font-semibold">Time Remaining</p>
-                                                <p className="text-sm font-bold text-brand-action">{getTimeRemaining(escrow.releaseTime)}</p>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
+                    {/* Stats Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-10">
+                        <div className="bg-white rounded-2xl p-6 shadow-lg">
+                            <p className="text-sm font-medium text-brand-secondary mb-2">Total Revenue</p>
+                            <h3 className="text-3xl font-bold text-brand-primary">{formatPrice(totalRevenue.toString())}</h3>
+                            <p className="text-xs text-brand-secondary mt-2">From completed transactions</p>
+                        </div>
+                        <div className="bg-white rounded-2xl p-6 shadow-lg">
+                            <p className="text-sm font-medium text-brand-secondary mb-2">Active Links</p>
+                            <h3 className="text-3xl font-bold text-brand-action">{activeEscrows}</h3>
+                            <p className="text-xs text-brand-secondary mt-2">Awaiting payment or confirmation</p>
+                        </div>
+                        <div className="bg-white rounded-2xl p-6 shadow-lg">
+                            <p className="text-sm font-medium text-brand-secondary mb-2">Completed</p>
+                            <h3 className="text-3xl font-bold text-emerald-600">{completedEscrows}</h3>
+                            <p className="text-xs text-brand-secondary mt-2">Successfully released</p>
+                        </div>
+                    </div>
+                </div>
 
-                                <div className="flex items-center gap-3 pt-2">
-                                    <button
-                                        onClick={() => {
-                                            navigator.clipboard.writeText(`${window.location.origin}/pay/${escrow.id}`);
-                                            // Ideally show toast
-                                        }}
-                                        className="flex-1 py-2.5 rounded-xl border border-brand-border text-sm font-semibold text-brand-secondary hover:bg-brand-surfaceHighlight hover:text-brand-primary transition-colors flex items-center justify-center gap-2"
-                                    >
-                                        <ExternalLink size={16} />
-                                        Copy Link
-                                    </button>
+                {/* Links List */}
+                <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+                    <div className="px-8 py-6 border-b border-brand-border/30 flex items-center justify-between">
+                        <h2 className="text-lg font-bold text-brand-primary">Your Payment Links</h2>
+                        <span className="text-sm text-brand-secondary">{escrows.length} total</span>
+                    </div>
 
-                                    {escrow.status === 'FUNDED' ? (
-                                        <Button
-                                            variant="primary"
-                                            size="sm"
-                                            onClick={() => handleRelease(escrow.id)}
-                                            className="flex-1 py-2.5 shadow-md shadow-brand-action/10"
-                                        >
-                                            Release Funds
-                                        </Button>
-                                    ) : (
-                                        <Link href={`/pay/${escrow.id}`} className="flex-1">
-                                            <Button variant="outline" size="sm" className="w-full py-2.5 bg-brand-surfaceHighlight border-transparent hover:bg-brand-border/50">
-                                                View Details
-                                            </Button>
-                                        </Link>
-                                    )}
-                                </div>
+                    {isLoading && escrows.length === 0 ? (
+                        <div className="text-center py-20">
+                            <Loader2 className="animate-spin mx-auto mb-4 text-brand-action" size={36} />
+                            <p className="text-brand-secondary font-medium">Loading your payment links...</p>
+                        </div>
+                    ) : error ? (
+                        <div className="text-center py-12">
+                            <AlertCircle className="mx-auto mb-4 text-red-500" size={36} />
+                            <p className="text-red-700 font-medium">{error}</p>
+                        </div>
+                    ) : escrows.length === 0 ? (
+                        <div className="text-center py-20">
+                            <div className="w-20 h-20 bg-brand-surfaceHighlight rounded-2xl flex items-center justify-center mx-auto mb-6">
+                                <Wallet className="text-brand-secondary/40" size={40} />
                             </div>
-                        ))}
-                    </div>
-                )}
+                            <h2 className="text-xl font-bold text-brand-primary mb-3">No payment links yet</h2>
+                            <p className="text-brand-secondary mb-8 max-w-sm mx-auto">Create your first link to start receiving secure payments.</p>
+                            <Link href="/create">
+                                <Button variant="primary" size="lg"><Plus size={18} className="mr-2" />Create First Link</Button>
+                            </Link>
+                        </div>
+                    ) : (
+                        <div className="divide-y divide-brand-border/30">
+                            {escrows.map((escrow) => {
+                                const statusConfig = getStatusConfig(escrow.status);
+                                return (
+                                    <div key={escrow.id} className="px-8 py-6 hover:bg-brand-surfaceHighlight/50 transition-colors">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-12 h-12 bg-brand-surfaceHighlight rounded-xl flex items-center justify-center text-brand-action font-bold">
+                                                    {escrow.itemName.charAt(0).toUpperCase()}
+                                                </div>
+                                                <div>
+                                                    <h3 className="font-bold text-brand-primary">{escrow.itemName}</h3>
+                                                    <p className="text-sm text-brand-secondary">{formatDate(escrow.createdAt)} · {escrow.currency || 'USDC'}</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-6">
+                                                <div className="text-right">
+                                                    <p className="font-bold text-brand-primary">{formatPrice(escrow.amountIdr)}</p>
+                                                    {escrow.releaseTime && escrow.status === 'FUNDED' && (
+                                                        <p className="text-xs text-brand-secondary flex items-center gap-1 justify-end">
+                                                            <Clock size={12} />
+                                                            {getTimeRemaining(escrow.releaseTime)}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                                <span className={`text-xs uppercase font-bold px-3 py-1.5 rounded-full ${statusConfig.bg} ${statusConfig.text}`}>
+                                                    {statusConfig.label}
+                                                </span>
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        onClick={() => handleCopyLink(escrow.id)}
+                                                        className={`p-2 rounded-lg transition-colors ${copiedId === escrow.id ? 'bg-emerald-50 text-emerald-700' : 'bg-brand-surfaceHighlight text-brand-secondary hover:text-brand-primary'}`}
+                                                    >
+                                                        {copiedId === escrow.id ? <CheckCircle size={18} /> : <Copy size={18} />}
+                                                    </button>
+                                                    {escrow.status === 'FUNDED' ? (
+                                                        <Button variant="primary" size="sm" onClick={() => handleRelease(escrow.id)}>Release</Button>
+                                                    ) : (
+                                                        <Link href={`/pay/${escrow.id}`}>
+                                                            <button className="p-2 rounded-lg bg-brand-surfaceHighlight text-brand-secondary hover:text-brand-primary transition-colors">
+                                                                <ExternalLink size={18} />
+                                                            </button>
+                                                        </Link>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
             </main>
         </div>
     );

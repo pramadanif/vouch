@@ -163,11 +163,11 @@ const Hero: React.FC = () => {
                       <span className="bg-brand-ice/50 text-brand-primary/60 text-[10px] font-bold px-3 py-1 rounded-full">Today 9:41 AM</span>
                     </div>
                     <ChatBubble isMe={false} text="Hi! Is the Jordan still available? Looks authentic!" time="09:30" />
-                    <ChatBubble isMe={true} text="Yes! Just cleaned it. Comes with the original box too. 👟" time="09:31" />
+                    <ChatBubble isMe={true} text="Yes! Just cleaned it. Comes with the original box too." time="09:31" />
                     <ChatBubble isMe={false} text="Great. I'm worried about transferring first though..." time="09:32" />
                     <ChatBubble isMe={true} text="I totally get it. Let's use Vouch. It protects us both." time="09:33" />
                     <VouchCard />
-                    <ChatBubble isMe={false} text="This looks safe. Paying now! 🙏" time="09:35" />
+                    <ChatBubble isMe={false} text="This looks safe. Paying now!" time="09:35" />
                   </div>
                 </div>
 

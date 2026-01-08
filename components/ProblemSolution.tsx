@@ -1,13 +1,14 @@
 import React from 'react';
-import { AlertCircle, ShieldCheck, HeartHandshake, Frown, ArrowDown } from 'lucide-react';
+import { AlertTriangle, ShieldAlert, BadgeCheck, Users, ArrowDown, Clock, ShieldX } from 'lucide-react';
+import { Reveal } from './Reveal';
 
 const ProblemCard = ({ icon: Icon, title, desc }: { icon: any, title: string, desc: string }) => (
-  <div className="bg-white/10 border border-white/10 p-8 rounded-2xl hover:bg-white/15 transition-all duration-300 backdrop-blur-sm group hover:-translate-y-1">
-    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-action to-brand-primary text-brand-ice flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-lg shadow-black/20">
+  <div className="bg-white/10 border border-white/10 p-8 rounded-2xl hover:bg-white/15 transition-all duration-300 backdrop-blur-sm group hover:-translate-y-1 h-full flex flex-col">
+    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-action to-brand-primary text-brand-ice flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-lg shadow-black/20 shrink-0">
       <Icon size={24} />
     </div>
-    <h3 className="text-white font-bold text-xl mb-3 tracking-tight">{title}</h3>
-    <p className="text-brand-ice/80 text-base leading-relaxed font-light">{desc}</p>
+    <h3 className="text-white font-bold text-xl mb-3 tracking-tight shrink-0">{title}</h3>
+    <p className="text-brand-ice/80 text-base leading-relaxed font-light flex-1">{desc}</p>
   </div>
 );
 
@@ -27,7 +28,7 @@ const ProblemSolution: React.FC = () => {
     <section className="relative">
       {/* The Problem (Gradient Corporate) */}
       <div className="bg-gradient-corporate bg-noise pt-32 pb-48 px-4 sm:px-6 lg:px-8 relative z-10 rounded-b-[60px] lg:rounded-b-[80px] overflow-hidden shadow-2xl">
-        
+
         {/* Decorative Glows */}
         <div className="absolute top-0 left-1/4 w-96 h-96 bg-brand-accent/20 rounded-full blur-[100px] pointer-events-none"></div>
         <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-brand-action/30 rounded-full blur-[100px] pointer-events-none"></div>
@@ -37,31 +38,37 @@ const ProblemSolution: React.FC = () => {
             The Current State
           </span>
           <h2 className="text-4xl md:text-6xl font-bold text-white mb-6 tracking-tight leading-tight">
-            Social Commerce is <br/>
+            Social Commerce is <br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-ice to-white italic font-serif">Broken & Risky</span>.
           </h2>
           <p className="text-brand-ice/90 max-w-2xl mx-auto text-xl font-light leading-relaxed">
-            Buying from strangers on Instagram or WhatsApp is essentially gambling. 
+            Buying from strangers on Instagram or WhatsApp is essentially gambling.
             73% of transactions fail due to lack of trust.
           </p>
         </div>
 
         <div className="max-w-6xl mx-auto grid md:grid-cols-3 gap-6 relative z-10">
-           <ProblemCard 
-             icon={Frown}
-             title="Buyer Anxiety"
-             desc="Sending money to a stranger's bank account feels unsafe. Most buyers ghost because they fear losing their cash."
-           />
-           <ProblemCard 
-             icon={AlertCircle}
-             title="Seller Risk"
-             desc="COD (Cash on Delivery) is unreliable. Buyers refuse packages, leaving you paying for return shipping."
-           />
-           <ProblemCard 
-             icon={Frown}
-             title="Wasted Time"
-             desc="Endless negotiation, promises to pay, and silence. Managing DMs without a system kills your productivity."
-           />
+          <Reveal delay={0.1} width="100%" className="h-full">
+            <ProblemCard
+              icon={ShieldX}
+              title="Buyer Anxiety"
+              desc="Sending money to a stranger's bank account feels unsafe. Most buyers ghost because they fear losing their cash."
+            />
+          </Reveal>
+          <Reveal delay={0.2} width="100%" className="h-full">
+            <ProblemCard
+              icon={AlertTriangle}
+              title="Seller Risk"
+              desc="COD (Cash on Delivery) is unreliable. Buyers refuse packages, leaving you paying for return shipping."
+            />
+          </Reveal>
+          <Reveal delay={0.3} width="100%" className="h-full">
+            <ProblemCard
+              icon={Clock}
+              title="Wasted Time"
+              desc="Endless negotiation, promises to pay, and silence. Managing DMs without a system kills your productivity."
+            />
+          </Reveal>
         </div>
       </div>
 
@@ -73,28 +80,34 @@ const ProblemSolution: React.FC = () => {
       {/* The Solution (Light Mode Clean) */}
       <div className="pt-32 pb-24 px-4 sm:px-6 lg:px-8 bg-brand-surfaceHighlight">
         <div className="max-w-7xl mx-auto">
-             <div className="text-center mb-20">
-                <span className="text-brand-action text-xs font-bold uppercase tracking-[0.2em] mb-4 block">The Solution</span>
-                <h2 className="text-4xl md:text-5xl font-bold text-brand-primary tracking-tight">Enter <span className="italic font-serif text-brand-action">Vouch</span>.</h2>
-             </div>
+          <div className="text-center mb-20">
+            <span className="text-brand-action text-xs font-bold uppercase tracking-[0.2em] mb-4 block">The Solution</span>
+            <h2 className="text-4xl md:text-5xl font-bold text-brand-primary tracking-tight">Enter <span className="italic font-serif text-brand-action">Vouch</span>.</h2>
+          </div>
 
-             <div className="max-w-6xl mx-auto grid md:grid-cols-3 gap-6">
-                <SolutionCard 
-                    icon={ShieldCheck}
-                    title="Smart Contract Escrow"
-                    desc="We lock the funds in a secure digital vault. The seller sees proof of funds, the buyer knows their money is safe."
-                />
-                <SolutionCard 
-                    icon={HeartHandshake}
-                    title="Mutual Protection"
-                    desc="Transactions only complete when both parties are satisfied. It's the fair way to do business online."
-                />
-                <SolutionCard 
-                    icon={ShieldCheck}
-                    title="Verified Reputation"
-                    desc="Build a public profile of successful deals. Your trust score becomes your biggest marketing asset."
-                />
-             </div>
+          <div className="max-w-6xl mx-auto grid md:grid-cols-3 gap-6">
+            <Reveal delay={0.1} width="100%">
+              <SolutionCard
+                icon={BadgeCheck}
+                title="Smart Contract Escrow"
+                desc="We lock the funds in a secure digital vault. The seller sees proof of funds, the buyer knows their money is safe."
+              />
+            </Reveal>
+            <Reveal delay={0.2} width="100%">
+              <SolutionCard
+                icon={Users}
+                title="Mutual Protection"
+                desc="Transactions only complete when both parties are satisfied. It's the fair way to do business online."
+              />
+            </Reveal>
+            <Reveal delay={0.3} width="100%">
+              <SolutionCard
+                icon={BadgeCheck}
+                title="Verified Reputation"
+                desc="Build a public profile of successful deals. Your trust score becomes your biggest marketing asset."
+              />
+            </Reveal>
+          </div>
         </div>
       </div>
     </section>
