@@ -1,0 +1,168 @@
+🟦 VOUCH — FINAL SYSTEM FLOW & FEATURE SPEC
+Decentralized Escrow for Social Commerce (Lisk Network)
+0️⃣ ONE-LINE POSITIONING (WAJIB DIPAKAI DI ATAS)
+Vouch is a decentralized escrow infrastructure that brings marketplace-level trust to Instagram, WhatsApp, and TikTok commerce — without a marketplace.
+1️⃣ CORE PROBLEM (FINAL VERSION)
+Social commerce in Southeast Asia happens inside private chats (DMs), but there is no neutral trust layer.
+Buyers are afraid to pay first
+Sellers are afraid to ship first
+Platforms like Instagram & WhatsApp do not provide escrow
+Existing solutions require centralized marketplaces or manual trust
+Vouch solves the “trust vacuum” in DM-based commerce by turning a simple payment link into a decentralized escrow contract.
+2️⃣ DESIGN PHILOSOPHY (IMPORTANT FOR JURY)
+Web2 UX, Web3 trust
+No login / no registration
+Wallet = identity
+Smart contract = source of truth
+Backend = replaceable coordinator (not custodian)
+3️⃣ ACTORS IN THE SYSTEM
+Actor	Role
+Seller	Creates escrow link, ships goods
+Buyer	Pays via crypto or fiat
+Smart Contract (Lisk)	Holds escrow logic & funds
+Backend (Coordinator)	Verifies fiat payment, relays tx
+Xendit	Fiat payment confirmation oracle
+4️⃣ HIGH-LEVEL FLOW (ICONIC FLOW)
+Paste link in DM → Buyer pays → Seller ships → Buyer confirms → Funds released
+This is the only flow you highlight publicly.
+5️⃣ DETAILED END-TO-END FLOW
+🧩 STEP 1 — Seller Creates Escrow Link (On-Chain)
+Seller actions
+Connects Lisk wallet
+Inputs:
+Item name & description
+Price (USDC or IDR equivalent)
+Escrow duration (e.g. 3 / 5 / 7 days)
+Accepted payment methods:
+USDC (on Lisk)
+Fiat via QRIS / VA (Xendit)
+On-chain
+createEscrow() called on VouchEscrow.sol
+Escrow created with:
+seller address
+amount
+expiry timestamp
+status = CREATED
+Output
+Unique Vouch Link (escrowId encoded)
+Seller pastes link into Instagram / WhatsApp / TikTok DM
+🧩 STEP 2 — Buyer Opens Link (No Login)
+Buyer experience
+Opens Vouch link
+Sees:
+Item details
+Seller wallet (shortened)
+Escrow timer
+Payment options:
+Pay with Crypto
+Pay with QRIS / VA
+No account. No signup.
+🧩 STEP 3A — Buyer Pays with Crypto (Fully On-Chain)
+Buyer actions
+Connects wallet
+Approves USDC
+Calls fundEscrow()
+On-chain
+USDC transferred directly to escrow contract
+Escrow status → FUNDED
+Funds are non-custodial & locked
+🧩 STEP 3B — Buyer Pays with Fiat (Hybrid, Jury-Safe)
+Buyer actions
+Selects QRIS / VA
+Pays via Xendit
+Backend role
+Receives Xendit callback
+Verifies:
+payment amount
+escrowId metadata
+payment status = PAID
+On-chain
+Backend calls markFiatFunded(escrowId)
+Backend-funded hot wallet transfers USDC into escrow
+Escrow status → FUNDED
+📌 Important framing
+Xendit never controls escrow logic
+Smart contract still decides release / refund
+🧩 STEP 4 — Seller Ships Goods (Off-Chain)
+Seller ships item
+No blockchain interaction
+Timer continues counting down
+🧩 STEP 5 — Buyer Confirms Receipt
+Buyer actions
+Clicks “Confirm Item Received”
+Calls releaseEscrow()
+On-chain
+Escrow status → RELEASED
+Funds transferred to seller wallet
+🧩 STEP 6 — Auto-Release or Auto-Refund (Fail-Safes)
+If buyer is inactive
+Escrow auto-releases to seller after expiry
+If seller cancels / timeout
+Escrow auto-refunds buyer
+All enforced on-chain.
+6️⃣ SMART CONTRACT ARCHITECTURE (FINAL)
+🧠 VouchEscrow.sol
+Core State
+enum Status {
+  CREATED,
+  FUNDED,
+  RELEASED,
+  REFUNDED,
+  DISPUTED
+}
+Key Functions
+createEscrow()
+fundEscrow() (crypto)
+markFiatFunded() (backend oracle)
+releaseEscrow()
+refundEscrow()
+autoSettle()
+Guarantees
+Backend cannot steal funds
+Backend cannot override escrow rules
+Funds only move via deterministic logic
+7️⃣ BACKEND RESPONSIBILITIES (MINIMIZED)
+Backend is not trusted custody.
+Backend handles:
+Xendit payment verification
+Relaying fiat → on-chain funding
+Indexing escrow events
+Providing escrow history API
+Backend cannot:
+Withdraw escrow funds
+Release funds arbitrarily
+Modify escrow rules
+8️⃣ FINAL FEATURE LIST (CURATED, NOT BLOATED)
+🔐 Trust & Safety
+On-chain escrow
+Seller-defined timeout
+Auto-release & auto-refund
+Immutable escrow history
+💸 Payments
+USDC on Lisk
+QRIS / VA / e-wallet via Xendit
+Unified escrow regardless of payment type
+🧾 Transparency
+Public escrow status
+Wallet-based identity
+On-chain event tracking
+🧑‍💻 UX
+No login / no register
+Shareable payment link
+Mobile-first design
+Web2-friendly language
+9️⃣ WHERE DECENTRALIZATION MATTERS (JURY SLIDE)
+Layer	Centralized?	Why
+Escrow logic	❌ No	Trust anchor
+Funds custody	❌ No	User safety
+Fiat confirmation	✅ Yes	Fiat reality
+Backend	⚠️ Replaceable	Coordinator only
+If the backend disappears, escrow funds remain safe on-chain.
+🔚 FINAL VERDICT STATEMENT (CLOSING LINE)
+Vouch doesn’t try to replace marketplaces.
+It replaces the missing trust layer in social commerce.
+Kalau kamu mau next:
+aku bisa rewrite Devfolio submission full
+atau diagram 1 halaman yang juri langsung paham
+atau audit: mana yang perlu dipotong biar tidak over-engineered
+Tinggal bilang.

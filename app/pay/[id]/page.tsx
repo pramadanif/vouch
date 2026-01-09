@@ -16,7 +16,7 @@ export default function PayLinkPage() {
     const escrowId = params.id as string;
 
     const [escrow, setEscrow] = useState<EscrowDetails | null>(null);
-    const [status, setStatus] = useState<'loading' | 'pending' | 'paying' | 'secured' | 'completed' | 'error'>('loading');
+    const [status, setStatus] = useState<'loading' | 'pending' | 'paying' | 'verifying' | 'secured' | 'completed' | 'error'>('loading');
     const [error, setError] = useState('');
     const [isSimulating, setIsSimulating] = useState(false);
     const [isConfirming, setIsConfirming] = useState(false);
@@ -48,7 +48,10 @@ export default function PayLinkPage() {
             setEscrow(data);
             if (data.status === 'RELEASED') setStatus('completed');
             else if (data.status === 'FUNDED') setStatus('secured');
-            else setStatus('pending');
+            else {
+                // Only set to pending if we are not verifying/paying (to preserve UI state)
+                setStatus(prev => (prev === 'verifying' || prev === 'paying') ? prev : 'pending');
+            }
         } catch (err: any) {
             setError(err.message || 'Failed to load');
             setStatus('error');
@@ -59,6 +62,7 @@ export default function PayLinkPage() {
 
     useEffect(() => {
         if (searchParams.get('status') === 'success') {
+            setStatus('verifying'); // Immediate feedback
             const poll = setInterval(async () => {
                 try {
                     const data = await api.getEscrow(escrowId);
@@ -120,6 +124,24 @@ export default function PayLinkPage() {
                 <div className="text-center text-white">
                     <Loader2 className="animate-spin mx-auto mb-4" size={40} />
                     <p className="text-white/70">Loading...</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (status === 'verifying') {
+        return (
+            <div className="min-h-screen bg-gradient-to-br from-brand-primary via-brand-action to-brand-accent flex items-center justify-center">
+                <div className="bg-white rounded-2xl p-10 text-center max-w-md shadow-2xl animate-fade-up">
+                    <Loader2 className="animate-spin mx-auto mb-6 text-brand-action" size={48} />
+                    <h2 className="text-2xl font-bold text-brand-primary mb-3">Verifying Payment</h2>
+                    <p className="text-brand-secondary text-sm mb-6">
+                        We are confirming your payment with Xendit.<br />
+                        This usually takes a few seconds...
+                    </p>
+                    <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-brand-action w-1/3 animate-[loading_1s_ease-in-out_infinite]"></div>
+                    </div>
                 </div>
             </div>
         );
