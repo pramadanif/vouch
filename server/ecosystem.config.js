@@ -10,7 +10,7 @@ module.exports = {
             max_memory_restart: '500M',
             env: {
                 NODE_ENV: 'production',
-                PORT: 3001,
+                PORT: 3002,
             },
             error_file: '/var/log/pm2/vouch-server-error.log',
             out_file: '/var/log/pm2/vouch-server-out.log',
