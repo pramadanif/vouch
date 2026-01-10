@@ -16,6 +16,8 @@ export async function createEscrowRecord(data: {
   amountUsdc: string;
   amountIdr: string;
   releaseDuration: number;
+  releaseTime?: number;
+  fiatCurrency?: string;
 }): Promise<Escrow> {
   return prisma.escrow.create({
     data: {
@@ -25,7 +27,9 @@ export async function createEscrowRecord(data: {
       itemImage: data.itemImage || null,
       amountUsdc: data.amountUsdc,
       amountIdr: data.amountIdr,
+      fiatCurrency: data.fiatCurrency || 'IDR',
       releaseDuration: data.releaseDuration,
+      releaseTime: data.releaseTime || null,
       status: 'CREATED',
     },
   });
@@ -46,20 +50,29 @@ export async function getEscrowsBySeller(sellerAddress: string): Promise<Escrow[
   });
 }
 
-// Update escrow with on-chain data
+// Update escrow with on-chain data (partial update supported)
 export async function updateEscrowOnChain(id: string, data: {
-  escrowId: number;
-  releaseTime: number;
-  txHash: string;
+  escrowId?: number;
+  releaseTime?: number;
+  txHash?: string;
 }): Promise<void> {
+  const updateData: any = {};
+  if (data.escrowId !== undefined) updateData.escrowId = data.escrowId;
+  if (data.releaseTime !== undefined) updateData.releaseTime = data.releaseTime;
+  if (data.txHash !== undefined) updateData.txHash = data.txHash;
+  if (data.escrowId !== undefined) updateData.status = 'WAITING_PAYMENT';
+
   await prisma.escrow.update({
     where: { id },
-    data: {
-      escrowId: data.escrowId,
-      releaseTime: data.releaseTime,
-      txHash: data.txHash,
-      status: 'WAITING_PAYMENT',
-    },
+    data: updateData,
+  });
+}
+
+// Update just the escrow status
+export async function updateEscrowStatus(id: string, status: string): Promise<void> {
+  await prisma.escrow.update({
+    where: { id },
+    data: { status: status as any },
   });
 }
 
@@ -78,12 +91,13 @@ export async function updateEscrowXendit(id: string, data: {
 }
 
 // Mark escrow as funded
-export async function markEscrowFunded(id: string, buyerAddress?: string): Promise<void> {
+export async function markEscrowFunded(id: string, buyerAddress?: string, buyerToken?: string): Promise<void> {
   await prisma.escrow.update({
     where: { id },
     data: {
       status: 'FUNDED',
       buyerAddress: buyerAddress || null,
+      buyerToken: buyerToken || null,
     },
   });
 }

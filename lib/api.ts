@@ -9,6 +9,9 @@ export interface CreateEscrowRequest {
     amountIdr: string;
     releaseDuration: number;
     currency?: string;
+    fiatCurrency?: 'IDR' | 'SGD' | 'MYR' | 'THB' | 'PHP' | 'VND';
+    txHash?: string;  // On-chain tx hash for linking
+    onChainEscrowId?: string; // On-chain escrow ID from event logs
 }
 
 export interface CreateEscrowResponse {
@@ -29,6 +32,7 @@ export interface EscrowDetails {
     id: string;
     escrowId: number | null;
     sellerAddress: string;
+    buyerAddress: string | null;  // Buyer wallet address (set after funding)
     itemName: string;
     itemDescription: string | null;
     itemImage: string | null;
@@ -41,6 +45,7 @@ export interface EscrowDetails {
     xenditInvoiceUrl: string | null;
     createdAt: number;
     currency: string;
+    fiatCurrency: 'IDR' | 'SGD' | 'MYR' | 'THB' | 'PHP' | 'VND';
 }
 
 export interface SellerEscrowsResponse {
@@ -54,6 +59,7 @@ export interface SellerEscrowsResponse {
         releaseTime: number | null;
         createdAt: number;
         currency: string;
+        fiatCurrency?: string;
     }>;
 }
 
@@ -125,13 +131,29 @@ export const api = {
     /**
      * Simulate payment (demo mode only)
      */
-    async simulatePayment(id: string): Promise<{ success: boolean }> {
+    async simulatePayment(id: string): Promise<{ success: boolean; buyerToken?: string }> {
         const response = await fetch(`${API_BASE}/api/payment/simulate/${id}`, {
             method: 'POST',
         });
         if (!response.ok) {
             const error = await response.json();
             throw new Error(error.error || 'Failed to simulate payment');
+        }
+        return response.json();
+    },
+
+    /**
+     * Check payment status (fallback for webhooks)
+     */
+    async checkPaymentStatus(id: string): Promise<{ success: boolean; status: string; buyerToken?: string }> {
+        const response = await fetch(`${API_BASE}/api/payment/check-status`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ escrowId: id }),
+        });
+        if (!response.ok) {
+            // Non-critical, just return false
+            return { success: false, status: 'UNKNOWN' };
         }
         return response.json();
     },
@@ -152,10 +174,29 @@ export const api = {
 
     /**
      * Confirm receipt and release funds (buyer initiated - correct trust model)
+     * Requires buyerToken that was generated during payment
      */
-    async confirmReceipt(id: string): Promise<{ success: boolean; message: string }> {
+    async confirmReceipt(id: string, buyerToken: string): Promise<{ success: boolean; message: string }> {
         const response = await fetch(`${API_BASE}/api/escrow/${id}/confirm`, {
             method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ buyerToken }),
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to confirm receipt');
+        }
+        return response.json();
+    },
+
+    /**
+     * Confirm receipt for crypto buyers (using wallet address as auth)
+     */
+    async confirmReceiptCrypto(id: string, buyerAddress: string): Promise<{ success: boolean; message: string }> {
+        const response = await fetch(`${API_BASE}/api/escrow/${id}/confirm-crypto`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ buyerAddress }),
         });
         if (!response.ok) {
             const error = await response.json();

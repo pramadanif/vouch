@@ -3,12 +3,23 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Check, Lock, Loader2, Clock, ArrowRight } from 'lucide-react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { useAccount, useConnect, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useAccount, useConnect, useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi';
 import { parseUnits } from 'viem';
 import Button from '@/components/Button';
 import FadeIn from '@/components/ui/FadeIn';
 import { api, EscrowDetails } from '@/lib/api';
 import { VOUCH_ESCROW_ADDRESS, MOCK_USDC_ADDRESS, MOCK_IDRX_ADDRESS, VOUCH_ESCROW_ABI, ERC20_ABI } from '@/lib/contracts';
+
+// Helper to get/set buyer token from localStorage
+const BUYER_TOKEN_KEY = 'vouch_buyer_token_';
+const getBuyerToken = (escrowId: string): string | null => {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem(BUYER_TOKEN_KEY + escrowId);
+};
+const setBuyerToken = (escrowId: string, token: string) => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(BUYER_TOKEN_KEY + escrowId, token);
+};
 
 export default function PayLinkPage() {
     const params = useParams();
@@ -23,11 +34,96 @@ export default function PayLinkPage() {
     const [paymentMethod, setPaymentMethod] = useState<'fiat' | 'crypto'>('fiat');
     const [cryptoStep, setCryptoStep] = useState<'connect' | 'approve' | 'pay' | 'confirming'>('connect');
     const [isMounted, setIsMounted] = useState(false);
+    const [buyerToken, setBuyerTokenState] = useState<string | null>(null);
+    const [, setCountdownTick] = useState(0); // Force re-render for countdown
+
 
     const { address, isConnected } = useAccount();
     const { connect, connectors, isPending: isConnecting } = useConnect();
-    const { writeContract, data: txHash, isPending: isTxPending } = useWriteContract();
-    const { isLoading: isWaitingTx, isSuccess: isTxSuccess } = useWaitForTransactionReceipt({ hash: txHash });
+    const { writeContract, writeContractAsync, data: txHash, isPending: isTxPending, error: writeError } = useWriteContract();
+
+    // Auto-sync: Read on-chain status to detect if already released (e.g. from previous session)
+    const { data: escrowOnChain } = useReadContract({
+        address: VOUCH_ESCROW_ADDRESS as `0x${string}`,
+        abi: VOUCH_ESCROW_ABI,
+        functionName: 'getEscrow',
+        args: [escrow?.escrowId ? BigInt(escrow.escrowId) : BigInt(0)],
+        query: {
+            enabled: !!escrow?.escrowId && status === 'secured',
+            refetchInterval: 3000,
+        }
+    });
+
+
+
+    // Helper to notify backend about release
+    const { isLoading: isWaitingTx, isSuccess: isTxSuccess, error: txError } = useWaitForTransactionReceipt({ hash: txHash });
+
+    const notifyBackendRelease = async () => {
+        try {
+            await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/escrow/${escrowId}/confirm-crypto`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ buyerAddress: address })
+            });
+            await fetchEscrow();
+            setStatus('completed');
+            setIsConfirming(false);
+
+        } catch (err) {
+            console.error('Failed to notify backend:', err);
+        }
+    };
+
+    // Handle auto-sync from on-chain state
+    useEffect(() => {
+        if (escrowOnChain) {
+            // getEscrow returns [seller, buyer, token, amount, releaseTime, funded, released, cancelled]
+            // We check 'released' (index 6)
+            const isReleased = Array.isArray(escrowOnChain) ? escrowOnChain[6] : (escrowOnChain as any).released;
+
+            if (isReleased && status !== 'completed') {
+                console.log('Detected on-chain release! Syncing...');
+                notifyBackendRelease();
+            }
+        }
+    }, [escrowOnChain, status]);
+
+    // Handle wagmi errors
+    React.useEffect(() => {
+        if (writeError) {
+            console.error('Write contract error:', writeError);
+
+            // Handle "already released" error - treat as success
+            if (writeError.message.includes('already released') || writeError.message.includes('VouchEscrow: already released')) {
+                console.log('Escrow already released on-chain, synchronizing backend...');
+                notifyBackendRelease();
+                return;
+            }
+
+            setError(writeError.message || 'Transaction failed');
+            // Reset crypto step to allow retry
+            if (cryptoStep === 'pay') setCryptoStep('approve');
+            setIsConfirming(false);
+
+        }
+        if (txError) {
+            console.error('Transaction error:', txError);
+            setError(txError.message || 'Transaction failed');
+            setIsConfirming(false);
+
+        }
+    }, [writeError, txError, cryptoStep]);
+
+    // Real-time countdown update every second
+    React.useEffect(() => {
+        if (status === 'secured' && escrow?.releaseTime) {
+            const interval = setInterval(() => {
+                setCountdownTick(prev => prev + 1);
+            }, 1000);
+            return () => clearInterval(interval);
+        }
+    }, [status, escrow?.releaseTime]);
 
     const getTokenDetails = useCallback(() => {
         if (!escrow) return { address: '', symbol: '', decimals: 0, amount: '0' };
@@ -58,11 +154,35 @@ export default function PayLinkPage() {
         }
     }, [escrowId]);
 
-    useEffect(() => { setIsMounted(true); fetchEscrow(); }, [fetchEscrow]);
+    // Load buyerToken from localStorage on mount
+    useEffect(() => {
+        setIsMounted(true);
+        fetchEscrow();
+        const storedToken = getBuyerToken(escrowId);
+        if (storedToken) setBuyerTokenState(storedToken);
+    }, [fetchEscrow, escrowId]);
+
+    // Auto-select crypto payment for non-IDR currencies
+    useEffect(() => {
+        if (escrow && escrow.fiatCurrency !== 'IDR') {
+            setPaymentMethod('crypto');
+        }
+    }, [escrow]);
 
     useEffect(() => {
         if (searchParams.get('status') === 'success') {
             setStatus('verifying'); // Immediate feedback
+
+            // Force backend synchronization (in case webhook failed/localhost)
+            api.checkPaymentStatus(escrowId).then((res) => {
+                console.log('Forced status check completed', res);
+                if (res.success && res.buyerToken) {
+                    console.log('Setting buyer token from status check');
+                    setBuyerToken(escrowId, res.buyerToken);
+                    setBuyerTokenState(res.buyerToken);
+                }
+            });
+
             const poll = setInterval(async () => {
                 try {
                     const data = await api.getEscrow(escrowId);
@@ -90,32 +210,200 @@ export default function PayLinkPage() {
 
     const handleSimulatePayment = async () => {
         setIsSimulating(true);
-        try { await api.simulatePayment(escrowId); await fetchEscrow(); }
+        try {
+            const result = await api.simulatePayment(escrowId);
+            // Store buyerToken for later use when confirming
+            if (result.buyerToken) {
+                setBuyerToken(escrowId, result.buyerToken);
+                setBuyerTokenState(result.buyerToken);
+            }
+            await fetchEscrow();
+        }
         catch (err: any) { setError(err.message); }
         finally { setIsSimulating(false); }
     };
 
+
     const handleConfirmReceipt = async () => {
+        // For crypto buyers: check if connected wallet matches buyer address
+        const isCryptoBuyer = isConnected && address && escrow?.buyerAddress &&
+            address.toLowerCase() === escrow.buyerAddress.toLowerCase();
+
+        if (!buyerToken && !isCryptoBuyer) {
+            setError('You are not authorized to confirm this payment. Only the buyer who paid can release funds.');
+            return;
+        }
         setIsConfirming(true);
-        try { await api.confirmReceipt(escrowId); setStatus('completed'); await fetchEscrow(); }
-        catch (err: any) { setError(err.message); }
-        finally { setIsConfirming(false); }
+        setError('');
+
+        try {
+            if (isCryptoBuyer && escrow?.escrowId) {
+                // TRUE DECENTRALIZATION: Buyer calls releaseFunds directly on-chain
+                console.log('Buyer releasing funds on-chain:', escrow.escrowId);
+
+                try {
+                    const hash = await writeContractAsync({
+                        address: VOUCH_ESCROW_ADDRESS as `0x${string}`,
+                        abi: VOUCH_ESCROW_ABI,
+                        functionName: 'releaseFunds',
+                        args: [BigInt(escrow.escrowId)]
+                    });
+
+                    console.log('Release tx submitted:', hash);
+
+                    // Optimistic wait then notify backend
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                    await notifyBackendRelease();
+
+                } catch (err: any) {
+                    // Handle "already released" from writeContractAsync
+                    if (err.message.includes('already released') || err.message.includes('VouchEscrow: already released')) {
+                        console.log('Escrow already released on-chain, synchronizing backend...');
+                        await notifyBackendRelease();
+                    } else {
+                        throw err;
+                    }
+                }
+            } else {
+                // Fiat buyer: use buyerToken via backend
+                await api.confirmReceipt(escrowId, buyerToken!);
+                setStatus('completed');
+                await fetchEscrow();
+                setIsConfirming(false);
+            }
+        }
+        catch (err: any) {
+            console.error('Release error:', err);
+            // Catch any bubbling "already released"
+            if (err.message && (err.message.includes('already released') || err.message.includes('VouchEscrow: already released'))) {
+                await notifyBackendRelease();
+                return;
+            }
+            setError(err.message || 'Failed to release funds');
+            setIsConfirming(false);
+        }
     };
 
     useEffect(() => { if (isMounted && isConnected && cryptoStep === 'connect') setCryptoStep('approve'); }, [isMounted, isConnected, cryptoStep]);
-    useEffect(() => { if (isTxSuccess && cryptoStep === 'confirming') fetchEscrow(); }, [isTxSuccess, cryptoStep, fetchEscrow]);
 
-    const handleConnectWallet = () => { const inj = connectors.find(c => c.id === 'injected'); if (inj) connect({ connector: inj }); };
-    const handleApproveToken = () => { if (!escrow) return; writeContract({ address: token.address as `0x${string}`, abi: ERC20_ABI, functionName: 'approve', args: [VOUCH_ESCROW_ADDRESS as `0x${string}`, parseUnits(token.amount, token.decimals)] }); setCryptoStep('pay'); };
-    const handleFundEscrow = () => { if (!escrow?.escrowId) { setError('Escrow ID not found'); return; } writeContract({ address: VOUCH_ESCROW_ADDRESS as `0x${string}`, abi: VOUCH_ESCROW_ABI, functionName: 'fundEscrow', args: [BigInt(escrow.escrowId)] }); setCryptoStep('confirming'); };
+    // Handle crypto tx success - watch txHash for both funding and release
+    useEffect(() => {
+        const handleTxSuccess = async () => {
+            if (!txHash) return;
 
-    const formatPrice = (amount: string) => `Rp ${parseInt(amount).toLocaleString('id-ID')}`;
+            // Case 1: Funding tx (cryptoStep === 'confirming')
+            if (cryptoStep === 'confirming') {
+                console.log('Crypto funding tx detected:', txHash);
+                await new Promise(resolve => setTimeout(resolve, 5000));
+
+                try {
+                    await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/escrow/${escrowId}/crypto-funded`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ txHash, buyerAddress: address })
+                    });
+                } catch (err) {
+                    console.error('Failed to notify backend:', err);
+                }
+
+                await fetchEscrow();
+                setStatus('secured');
+            }
+
+        };
+
+        handleTxSuccess();
+    }, [txHash, cryptoStep, escrowId, address, fetchEscrow]);
+
+    const handleConnectWallet = () => {
+        const inj = connectors.find(c => c.id === 'injected');
+        if (inj) connect({ connector: inj });
+    };
+
+    const handleApproveToken = () => {
+        if (!escrow) {
+            setError('Escrow data not loaded');
+            return;
+        }
+        console.log('Approving token:', {
+            tokenAddress: token.address,
+            spender: VOUCH_ESCROW_ADDRESS,
+            amount: token.amount,
+            decimals: token.decimals
+        });
+        try {
+            writeContract({
+                address: token.address as `0x${string}`,
+                abi: ERC20_ABI,
+                functionName: 'approve',
+                args: [VOUCH_ESCROW_ADDRESS as `0x${string}`, parseUnits(token.amount, token.decimals)]
+            });
+            setCryptoStep('pay');
+        } catch (err: any) {
+            console.error('Approve error:', err);
+            setError(err.message || 'Failed to approve token');
+        }
+    };
+
+    const handleFundEscrow = () => {
+        if (!escrow?.escrowId) {
+            setError('Escrow ID not found. The escrow may not be created on-chain yet.');
+            return;
+        }
+        console.log('Funding escrow:', {
+            escrowId: escrow.escrowId,
+            contractAddress: VOUCH_ESCROW_ADDRESS
+        });
+        try {
+            writeContract({
+                address: VOUCH_ESCROW_ADDRESS as `0x${string}`,
+                abi: VOUCH_ESCROW_ABI,
+                functionName: 'fundEscrow',
+                args: [BigInt(escrow.escrowId)]
+            });
+            setCryptoStep('confirming');
+        } catch (err: any) {
+            console.error('Fund escrow error:', err);
+            setError(err.message || 'Failed to fund escrow');
+        }
+    };
+
+    // Currency config for proper formatting
+    const currencyConfig: Record<string, { symbol: string; name: string }> = {
+        IDR: { symbol: 'Rp', name: 'Indonesian Rupiah' },
+        SGD: { symbol: 'S$', name: 'Singapore Dollar' },
+        MYR: { symbol: 'RM', name: 'Malaysian Ringgit' },
+        THB: { symbol: '฿', name: 'Thai Baht' },
+        PHP: { symbol: '₱', name: 'Philippine Peso' },
+        VND: { symbol: '₫', name: 'Vietnamese Dong' },
+    };
+
+    const formatPrice = (amount: string) => {
+        const currency = escrow?.fiatCurrency || 'IDR';
+        const config = currencyConfig[currency] || currencyConfig.IDR;
+        return `${config.symbol} ${parseInt(amount).toLocaleString('id-ID')}`;
+    };
+
+    // Enhanced countdown with full detail
     const getTimeRemaining = () => {
         if (!escrow?.releaseTime) return null;
-        const rem = escrow.releaseTime - Math.floor(Date.now() / 1000);
-        if (rem <= 0) return 'Ready';
-        const d = Math.floor(rem / 86400), h = Math.floor((rem % 86400) / 3600);
-        return d > 0 ? `${d}d ${h}h` : `${h}h`;
+        const now = Math.floor(Date.now() / 1000);
+        const remaining = escrow.releaseTime - now;
+
+        if (remaining <= 0) return { text: 'Ready to release', isReady: true };
+
+        const days = Math.floor(remaining / 86400);
+        const hours = Math.floor((remaining % 86400) / 3600);
+        const minutes = Math.floor((remaining % 3600) / 60);
+        const seconds = remaining % 60;
+
+        let text = '';
+        if (days > 0) text = `${days}d ${hours}h ${minutes}m`;
+        else if (hours > 0) text = `${hours}h ${minutes}m ${seconds}s`;
+        else if (minutes > 0) text = `${minutes}m ${seconds}s`;
+        else text = `${seconds}s`;
+
+        return { text, isReady: false };
     };
 
     if (status === 'loading') {
@@ -235,22 +523,37 @@ export default function PayLinkPage() {
                                 </div>
 
                                 <div className="p-8 space-y-4">
-                                    {/* Fiat Option */}
+                                    {/* Fiat Option - Only available for IDR */}
                                     <button
-                                        onClick={() => setPaymentMethod('fiat')}
-                                        className={`w-full p-5 rounded-xl text-left transition-all border-2 flex items-center gap-4 ${paymentMethod === 'fiat'
-                                            ? 'bg-brand-ice/20 border-brand-action'
-                                            : 'bg-brand-surfaceHighlight border-brand-border hover:border-brand-action/50'
+                                        onClick={() => escrow.fiatCurrency === 'IDR' && setPaymentMethod('fiat')}
+                                        disabled={escrow.fiatCurrency !== 'IDR'}
+                                        className={`w-full p-5 rounded-xl text-left transition-all border-2 flex items-center gap-4 ${escrow.fiatCurrency !== 'IDR'
+                                            ? 'opacity-50 cursor-not-allowed bg-gray-50 border-gray-200'
+                                            : paymentMethod === 'fiat'
+                                                ? 'bg-brand-ice/20 border-brand-action'
+                                                : 'bg-brand-surfaceHighlight border-brand-border hover:border-brand-action/50'
                                             }`}
                                     >
-                                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-lg ${paymentMethod === 'fiat' ? 'bg-brand-action text-white' : 'bg-white text-brand-secondary border border-brand-border'}`}>
+                                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-lg ${escrow.fiatCurrency !== 'IDR'
+                                            ? 'bg-gray-100 text-gray-400'
+                                            : paymentMethod === 'fiat'
+                                                ? 'bg-brand-action text-white'
+                                                : 'bg-white text-brand-secondary border border-brand-border'
+                                            }`}>
                                             Rp
                                         </div>
                                         <div className="flex-1">
-                                            <p className="font-bold text-brand-primary">QRIS / Bank Transfer</p>
-                                            <p className="text-sm text-brand-secondary">Pay with local payment methods</p>
+                                            <p className={`font-bold ${escrow.fiatCurrency !== 'IDR' ? 'text-gray-400' : 'text-brand-primary'}`}>
+                                                QRIS / Bank Transfer
+                                            </p>
+                                            <p className={`text-sm ${escrow.fiatCurrency !== 'IDR' ? 'text-gray-400' : 'text-brand-secondary'}`}>
+                                                {escrow.fiatCurrency !== 'IDR'
+                                                    ? `Not available for ${escrow.fiatCurrency} (Xendit supports IDR only)`
+                                                    : 'Pay with local payment methods'
+                                                }
+                                            </p>
                                         </div>
-                                        {paymentMethod === 'fiat' && <Check size={20} className="text-brand-action" />}
+                                        {paymentMethod === 'fiat' && escrow.fiatCurrency === 'IDR' && <Check size={20} className="text-brand-action" />}
                                     </button>
 
                                     {/* Crypto Option */}
@@ -305,6 +608,22 @@ export default function PayLinkPage() {
                                                 ))}
                                             </div>
 
+                                            {/* Error Display */}
+                                            {error && (
+                                                <div className="p-3 bg-red-50 border border-red-100 text-red-700 rounded-xl text-sm">
+                                                    {error}
+                                                </div>
+                                            )}
+
+                                            {/* Debug Info - shows on-chain escrow ID */}
+                                            {escrow && (
+                                                <p className="text-xs text-center text-brand-secondary">
+                                                    {escrow.escrowId
+                                                        ? `On-chain Escrow ID: ${escrow.escrowId}`
+                                                        : 'Escrow not yet on-chain (create failed)'}
+                                                </p>
+                                            )}
+
                                             {!isConnected && isMounted && (
                                                 <Button variant="primary" size="lg" className="w-full" onClick={handleConnectWallet} disabled={isConnecting}>
                                                     {isConnecting ? <><Loader2 className="animate-spin mr-2" size={18} />Connecting...</> : 'Connect Wallet'}
@@ -357,19 +676,42 @@ export default function PayLinkPage() {
 
                             {status === 'secured' && (
                                 <>
-                                    <Button variant="primary" size="lg" className="w-full mb-4" onClick={handleConfirmReceipt} disabled={isConfirming}>
-                                        {isConfirming ? <><Loader2 className="animate-spin mr-2" size={18} />Confirming...</> : 'Confirm Item Received'}
-                                    </Button>
-                                    <p className="text-xs text-brand-secondary mb-6">This releases {formatPrice(escrow.amountIdr)} to the seller</p>
+                                    {error && (
+                                        <div className="p-4 bg-red-50 border border-red-100 text-red-700 rounded-xl text-sm mb-4">
+                                            {error}
+                                        </div>
+                                    )}
+                                    {/* Buyer can be: (1) has buyerToken from fiat, OR (2) connected wallet is the buyer */}
+                                    {(buyerToken || (isConnected && address && escrow.buyerAddress && address.toLowerCase() === escrow.buyerAddress.toLowerCase())) ? (
+                                        <>
+                                            <Button variant="primary" size="lg" className="w-full mb-4" onClick={handleConfirmReceipt} disabled={isConfirming}>
+                                                {isConfirming ? <><Loader2 className="animate-spin mr-2" size={18} />Confirming...</> : 'Confirm Item Received'}
+                                            </Button>
+                                            <p className="text-xs text-brand-secondary mb-6">This releases {formatPrice(escrow.amountIdr)} to the seller</p>
+                                        </>
+                                    ) : (
+                                        <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl mb-6">
+                                            <p className="text-amber-800 text-sm font-medium">Viewing as Seller</p>
+                                            <p className="text-amber-700 text-xs mt-1">Only the buyer who paid can confirm receipt and release funds.</p>
+                                        </div>
+                                    )}
                                 </>
                             )}
 
                             <div className="bg-brand-surfaceHighlight p-4 rounded-xl flex items-center justify-between text-sm">
                                 <div className="flex items-center gap-2 text-brand-secondary">
                                     <Clock size={16} />
-                                    Auto-release
+                                    Auto-release countdown
                                 </div>
-                                <span className="font-bold text-brand-action">{getTimeRemaining()}</span>
+                                {(() => {
+                                    const timer = getTimeRemaining();
+                                    if (!timer) return <span className="text-brand-secondary">-</span>;
+                                    return (
+                                        <span className={`font-bold ${timer.isReady ? 'text-emerald-600' : 'text-brand-action'}`}>
+                                            {timer.text}
+                                        </span>
+                                    );
+                                })()}
                             </div>
                         </div>
                     </FadeIn>

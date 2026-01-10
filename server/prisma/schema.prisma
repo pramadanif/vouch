@@ -24,11 +24,13 @@ model Escrow {
   escrowId         Int?         @map("escrow_id") // On-chain escrow ID
   sellerAddress    String       @map("seller_address")
   buyerAddress     String?      @map("buyer_address")
+  buyerToken       String?      @map("buyer_token") // Session token for buyer verification
   itemName         String       @map("item_name")
   itemDescription  String?      @map("item_description") // NEW: Item description field
   itemImage        String?      @map("item_image")
   amountUsdc       String       @map("amount_usdc")
   amountIdr        String       @map("amount_idr")
+  fiatCurrency     String       @default("IDR") @map("fiat_currency")
   releaseDuration  Int          @map("release_duration") // in seconds
   releaseTime      Int?         @map("release_time") // Unix timestamp
   status           EscrowStatus @default(CREATED)
