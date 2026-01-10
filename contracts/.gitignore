@@ -1,0 +1,16 @@
+# Build
+out/
+broadcast/
+cache/
+artifacts/
+
+# Dependencies
+lib/
+node_modules/
+
+# Environment
+.env
+.env.*
+
+# Misc
+.DS_Store

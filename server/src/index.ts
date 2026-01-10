@@ -9,6 +9,7 @@ dotenv.config();
 
 import escrowRoutes from './routes/escrow';
 import paymentRoutes from './routes/payment';
+import faucetRoutes from './routes/faucet';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -16,35 +17,36 @@ const PORT = process.env.PORT || 3001;
 // Ensure data directory exists
 const dataDir = path.join(__dirname, '..', 'data');
 if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
+  fs.mkdirSync(dataDir, { recursive: true });
 }
 
 // Middleware
 app.use(cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-    credentials: true
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  credentials: true
 }));
 app.use(express.json());
 
 // Request logging
 app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} ${req.method} ${req.path}`);
-    next();
+  console.log(`${new Date().toISOString()} ${req.method} ${req.path}`);
+  next();
 });
 
 // Health check
 app.get('/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // API routes
 app.use('/api/escrow', escrowRoutes);
 app.use('/api/payment', paymentRoutes);
+app.use('/api/faucet', faucetRoutes);
 
 // Mock payment page (for demo when Xendit not configured)
 app.get('/mock-payment/:invoiceId', (req, res) => {
-    const { invoiceId } = req.params;
-    res.send(`
+  const { invoiceId } = req.params;
+  res.send(`
     <!DOCTYPE html>
     <html>
     <head>
@@ -100,13 +102,13 @@ app.get('/mock-payment/:invoiceId', (req, res) => {
 
 // Error handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-    console.error('Server error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+  console.error('Server error:', err);
+  res.status(500).json({ error: 'Internal server error' });
 });
 
 // Start server
 app.listen(PORT, () => {
-    console.log(`
+  console.log(`
 ╔════════════════════════════════════════════╗
 ║     🛡️  Vouch Backend API Started          ║
 ╠════════════════════════════════════════════╣

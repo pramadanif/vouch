@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Wallet, Clock, CheckCircle, AlertCircle, Loader2, ExternalLink, Copy, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { useAccount, useConnect, useDisconnect } from 'wagmi';
@@ -18,6 +18,7 @@ export default function DashboardPage() {
     const [error, setError] = useState('');
     const [copiedId, setCopiedId] = useState<string | null>(null);
     const [isMounted, setIsMounted] = useState(false);
+    const [revenueCurrency, setRevenueCurrency] = useState('IDR');
 
     const fetchEscrows = useCallback(async () => {
         if (!address) return;
@@ -42,17 +43,50 @@ export default function DashboardPage() {
         if (injected) connect({ connector: injected });
     };
 
-    const formatAddress = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
-    const formatPrice = (amount: string) => `Rp ${parseInt(amount).toLocaleString('id-ID')}`;
-    const formatDate = (timestamp: number) => new Date(timestamp * 1000).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+    const currencyConfig: Record<string, { symbol: string; name: string; usdcRate: number; flag: string }> = {
+        IDR: { symbol: 'Rp', name: 'Indonesian Rupiah', usdcRate: 16800, flag: '🇮🇩' },
+        SGD: { symbol: 'S$', name: 'Singapore Dollar', usdcRate: 1.29, flag: '🇸🇬' },
+        MYR: { symbol: 'RM', name: 'Malaysian Ringgit', usdcRate: 4.07, flag: '🇲🇾' },
+        THB: { symbol: '฿', name: 'Thai Baht', usdcRate: 31.4, flag: '🇹🇭' },
+        PHP: { symbol: '₱', name: 'Philippine Peso', usdcRate: 59.2, flag: '🇵🇭' },
+        VND: { symbol: '₫', name: 'Vietnamese Dong', usdcRate: 26200, flag: '🇻🇳' },
+    };
 
+    const formatAddress = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+    const formatPrice = (amount: string | number, currency: string = 'IDR') => {
+        const symbol = currencyConfig[currency]?.symbol || 'Rp';
+        const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+        return `${symbol} ${num.toLocaleString('id-ID', { maximumFractionDigits: 2 })}`;
+    };
+
+    // Safe date formatting - handles both seconds and milliseconds timestamps
+    const formatDate = (timestamp: number | null | undefined) => {
+        if (!timestamp) return '-';
+        // If timestamp is in seconds (< 100 billion, roughly year 5138), multiply by 1000
+        const ms = timestamp < 100000000000 ? timestamp * 1000 : timestamp;
+        const date = new Date(ms);
+        if (isNaN(date.getTime())) return '-';
+        return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+    };
+
+    // Enhanced countdown with more detail
     const getTimeRemaining = (releaseTime: number | null) => {
         if (!releaseTime) return null;
-        const remaining = releaseTime - Math.floor(Date.now() / 1000);
-        if (remaining <= 0) return 'Ready';
+        const now = Math.floor(Date.now() / 1000);
+        const remaining = releaseTime - now;
+
+        if (remaining <= 0) return { text: 'Ready to release', isReady: true };
+
         const days = Math.floor(remaining / 86400);
         const hours = Math.floor((remaining % 86400) / 3600);
-        return days > 0 ? `${days}d ${hours}h` : `${hours}h`;
+        const minutes = Math.floor((remaining % 3600) / 60);
+
+        let text = '';
+        if (days > 0) text = `${days}d ${hours}h remaining`;
+        else if (hours > 0) text = `${hours}h ${minutes}m remaining`;
+        else text = `${minutes}m remaining`;
+
+        return { text, isReady: false };
     };
 
     const getStatusConfig = (status: string) => {
@@ -76,7 +110,28 @@ export default function DashboardPage() {
     };
 
     // Stats
-    const totalRevenue = escrows.filter(e => e.status === 'RELEASED').reduce((acc, curr) => acc + parseInt(curr.amountIdr), 0);
+    // Stats
+    const totalRevenue = useMemo(() => {
+        return escrows
+            .filter(e => e.status === 'RELEASED')
+            .reduce((total, escrow) => {
+                const amount = parseFloat(escrow.amountIdr);
+                const currency = escrow.fiatCurrency || 'IDR';
+
+                // If same currency, just add
+                if (currency === revenueCurrency) return total + amount;
+
+                // Convert to USDC first (Rate: 1 USDC = X Currency)
+                // So Amount (USD) = Amount (Currency) / Rate
+                // Safety check: avoid division by zero
+                const rateToUsdc = currencyConfig[currency]?.usdcRate || 16800;
+                const amountInUsdc = amount / (rateToUsdc || 1);
+
+                // Convert to Target
+                const rateFromUsdc = currencyConfig[revenueCurrency]?.usdcRate || 16800;
+                return total + (amountInUsdc * rateFromUsdc);
+            }, 0);
+    }, [escrows, revenueCurrency]);
     const activeEscrows = escrows.filter(e => e.status === 'FUNDED' || e.status === 'WAITING_PAYMENT').length;
     const completedEscrows = escrows.filter(e => e.status === 'RELEASED').length;
 
@@ -164,8 +219,19 @@ export default function DashboardPage() {
                     {/* Stats Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-10">
                         <div className="bg-white rounded-2xl p-6 shadow-lg">
-                            <p className="text-sm font-medium text-brand-secondary mb-2">Total Revenue</p>
-                            <h3 className="text-3xl font-bold text-brand-primary">{formatPrice(totalRevenue.toString())}</h3>
+                            <div className="flex items-center justify-between mb-2">
+                                <p className="text-sm font-medium text-brand-secondary">Total Revenue</p>
+                                <select
+                                    value={revenueCurrency}
+                                    onChange={(e) => setRevenueCurrency(e.target.value)}
+                                    className="text-xs bg-brand-surfaceHighlight border border-brand-border/50 rounded-lg px-2 py-1 outline-none focus:border-brand-action cursor-pointer font-medium text-brand-primary"
+                                >
+                                    {Object.keys(currencyConfig).map(curr => (
+                                        <option key={curr} value={curr}>{curr}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <h3 className="text-3xl font-bold text-brand-primary">{formatPrice(totalRevenue, revenueCurrency)}</h3>
                             <p className="text-xs text-brand-secondary mt-2">From completed transactions</p>
                         </div>
                         <div className="bg-white rounded-2xl p-6 shadow-lg">
@@ -222,18 +288,22 @@ export default function DashboardPage() {
                                                 </div>
                                                 <div>
                                                     <h3 className="font-bold text-brand-primary">{escrow.itemName}</h3>
-                                                    <p className="text-sm text-brand-secondary">{formatDate(escrow.createdAt)} · {escrow.currency || 'USDC'}</p>
+                                                    <p className="text-sm text-brand-secondary">{formatDate(escrow.createdAt)} · {escrow.fiatCurrency || 'IDR'}</p>
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-6">
                                                 <div className="text-right">
-                                                    <p className="font-bold text-brand-primary">{formatPrice(escrow.amountIdr)}</p>
-                                                    {escrow.releaseTime && escrow.status === 'FUNDED' && (
-                                                        <p className="text-xs text-brand-secondary flex items-center gap-1 justify-end">
-                                                            <Clock size={12} />
-                                                            {getTimeRemaining(escrow.releaseTime)}
-                                                        </p>
-                                                    )}
+                                                    <p className="font-bold text-brand-primary">{formatPrice(escrow.amountIdr, escrow.fiatCurrency)}</p>
+                                                    {escrow.releaseTime && escrow.status === 'FUNDED' && (() => {
+                                                        const timer = getTimeRemaining(escrow.releaseTime);
+                                                        if (!timer) return null;
+                                                        return (
+                                                            <p className={`text-xs flex items-center gap-1 justify-end ${timer.isReady ? 'text-emerald-600 font-semibold' : 'text-brand-secondary'}`}>
+                                                                <Clock size={12} />
+                                                                {timer.text}
+                                                            </p>
+                                                        );
+                                                    })()}
                                                 </div>
                                                 <span className={`text-xs uppercase font-bold px-3 py-1.5 rounded-full ${statusConfig.bg} ${statusConfig.text}`}>
                                                     {statusConfig.label}
@@ -245,15 +315,11 @@ export default function DashboardPage() {
                                                     >
                                                         {copiedId === escrow.id ? <CheckCircle size={18} /> : <Copy size={18} />}
                                                     </button>
-                                                    {escrow.status === 'FUNDED' ? (
-                                                        <Button variant="primary" size="sm" onClick={() => handleRelease(escrow.id)}>Release</Button>
-                                                    ) : (
-                                                        <Link href={`/pay/${escrow.id}`}>
-                                                            <button className="p-2 rounded-lg bg-brand-surfaceHighlight text-brand-secondary hover:text-brand-primary transition-colors">
-                                                                <ExternalLink size={18} />
-                                                            </button>
-                                                        </Link>
-                                                    )}
+                                                    <Link href={`/pay/${escrow.id}`}>
+                                                        <button className="p-2 rounded-lg bg-brand-surfaceHighlight text-brand-secondary hover:text-brand-primary transition-colors">
+                                                            <ExternalLink size={18} />
+                                                        </button>
+                                                    </Link>
                                                 </div>
                                             </div>
                                         </div>
