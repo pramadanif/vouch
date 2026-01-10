@@ -104,7 +104,7 @@ Vouch creates a **shareable payment link** that holds funds in a **smart contrac
 
 ### Advanced Features
 
-- **Multi-Currency Support:** PHP, IDR, USD via currency API
+- **Multi-Currency Support:** PHP, IDR, THB, SGD, MYR, VND, USD via currency API
 - **Buyer Token:** Unique token for secure release authorization
 - **Webhook Integration:** Real-time payment notifications from Xendit
 - **On-Chain Verification:** All escrows verifiable on block explorer
