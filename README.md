@@ -83,6 +83,14 @@ Vouch creates a **shareable payment link** that holds funds in a **smart contrac
 - Smart contract ensures neither party can cheat
 - No registration, no account creation, no marketplace fees
 
+**Payment Options:**
+- **Fiat (QRIS/VA/Bank Transfer):** Buyer pays with local payment methods via Xendit — **no wallet needed**
+- **Crypto (USDC/IDRX):** Buyer pays directly on-chain with stablecoins — **wallet required**
+
+**Protection Mechanisms:**
+- **Buyer Protection:** Funds locked in smart contract escrow until delivery confirmed
+- **Seller Protection:** Auto-release after timeout (e.g., 7 days) if buyer doesn't confirm delivery
+
 ---
 
 ## ✨ Features
@@ -120,8 +128,9 @@ Vouch creates a **shareable payment link** that holds funds in a **smart contrac
 ```mermaid
 graph TB
     subgraph Users["👥 Users"]
-        Seller["Seller<br/>(Has Wallet)"]
-        Buyer["Buyer<br/>(No Wallet Needed)"]
+        Seller["Seller<br/>(Requires Wallet)"]
+        BuyerFiat["Buyer - Fiat<br/>(No Wallet Needed)"]
+        BuyerCrypto["Buyer - Crypto<br/>(Requires Wallet)"]
     end
 
     subgraph Frontend["🖥️ Frontend (Next.js 15)"]
@@ -154,22 +163,23 @@ graph TB
     end
 
     Seller --> Create
-    Buyer --> Pay
+    BuyerFiat --> Pay
+    BuyerCrypto --> Pay
     
     %% Seller creates escrow directly on-chain
     Create -->|"createEscrow()<br/>(Seller signs)"| VouchEscrow
     Create -->|"Save metadata"| EscrowRoutes
     EscrowRoutes --> Prisma
     
-    %% Fiat payment flow
-    Pay --> PaymentRoutes
+    %% Fiat payment flow (QRIS/VA - no wallet)
+    Pay -->|"Fiat: QRIS/VA"| PaymentRoutes
     PaymentRoutes --> Xendit
     Xendit -."Webhook<br/>(Payment confirmed)".-> PaymentRoutes
     PaymentRoutes -->|"Fund escrow<br/>+ markFunded()"| HotWallet
     HotWallet -->|"Transfer USDC/IDRX<br/>+ markFunded()"| VouchEscrow
     
-    %% Crypto payment flow (direct)
-    Pay -."Crypto payment<br/>(Buyer signs)".-> VouchEscrow
+    %% Crypto payment flow (direct - requires wallet)
+    Pay -."Crypto: Direct<br/>(Buyer signs)"..-> VouchEscrow
     
     Dashboard --> EscrowRoutes
     Faucet --> FaucetRoutes
@@ -349,15 +359,22 @@ sequenceDiagram
     
     Note over Seller: Ships item to buyer
     
-    Buyer->>Frontend: Click "Release Funds"
-    Frontend->>Backend: POST /api/escrow/abc123/release<br/>{buyerToken: "xxx"}
-    Backend->>Backend: Verify buyerToken
-    Backend->>ProtocolWallet: Trigger release
-    ProtocolWallet->>Lisk: releaseFunds(escrowId)
-    Lisk->>Seller: Transfer tokens to seller wallet
-    Lisk-->>Backend: Transaction confirmed
-    Backend-->>Frontend: {status: "RELEASED"}
-    Frontend->>Buyer: Show "Payment Complete"
+    alt Buyer confirms delivery
+        Buyer->>Frontend: Click "Release Funds"
+        Frontend->>Backend: POST /api/escrow/abc123/release<br/>{buyerToken: "xxx"}
+        Backend->>Backend: Verify buyerToken
+        Backend->>ProtocolWallet: Trigger release
+        ProtocolWallet->>Lisk: releaseFunds(escrowId)
+        Lisk->>Seller: Transfer tokens to seller wallet
+        Lisk-->>Backend: Transaction confirmed
+        Backend-->>Frontend: {status: "RELEASED"}
+        Frontend->>Buyer: Show "Payment Complete"
+    else Timeout reached (buyer doesn't confirm)
+        Note over Lisk: After releaseTime passes
+        ProtocolWallet->>Lisk: releaseFunds(escrowId)<br/>(Auto-release)
+        Lisk->>Seller: Transfer tokens to seller wallet
+        Note over Seller: Seller receives funds automatically
+    end
 ```
 
 ### Flow 2: Crypto Payment
@@ -387,10 +404,71 @@ sequenceDiagram
     
     Note over Seller: Ships item to buyer
     
-    Buyer->>Lisk: releaseFunds(escrowId)
-    Lisk->>Seller: Transfer tokens to seller wallet
-    Lisk-->>Frontend: Transaction confirmed
-    Frontend->>Buyer: Show "Payment Complete"
+    alt Buyer confirms delivery
+        Buyer->>Lisk: releaseFunds(escrowId)
+        Lisk->>Seller: Transfer tokens to seller wallet
+        Lisk-->>Frontend: Transaction confirmed
+        Frontend->>Buyer: Show "Payment Complete"
+    else Timeout reached (buyer doesn't confirm)
+        Note over Lisk: After releaseTime passes
+        Seller->>Lisk: releaseFunds(escrowId)<br/>(Auto-release)
+        Lisk->>Seller: Transfer tokens to seller wallet
+        Note over Seller: Seller receives funds automatically
+    end
+```
+
+### Auto-Release Mechanism
+
+**Purpose:** Protects sellers from buyers who receive items but refuse to release funds.
+
+**How It Works:**
+
+1. **Seller sets timeout** when creating escrow (e.g., `releaseTime = now + 7 days`)
+2. **Buyer receives item** and should call `releaseFunds()` to release payment
+3. **If buyer doesn't release:**
+   - After `releaseTime` passes, **anyone** can call `releaseFunds(escrowId)`
+   - Smart contract checks: `block.timestamp >= releaseTime`
+   - Funds automatically released to seller wallet
+
+**Who Can Trigger Release:**
+
+| Actor | Before Timeout | After Timeout |
+|-------|----------------|---------------|
+| **Buyer** | ✅ Yes (anytime) | ✅ Yes |
+| **Protocol Wallet** | ❌ No | ✅ Yes |
+| **Seller** | ❌ No | ✅ Yes |
+| **Anyone** | ❌ No | ✅ Yes (public function) |
+
+**Example Timeline:**
+
+```
+Day 0: Escrow created (releaseTime = Day 7)
+Day 1: Buyer pays, escrow funded
+Day 2: Seller ships item
+Day 3: Buyer receives item
+Day 4: Buyer can release funds ✅
+Day 7: Timeout reached
+Day 8: Anyone can trigger auto-release ✅
+```
+
+**Smart Contract Logic:**
+
+```solidity
+function releaseFunds(uint256 escrowId) external {
+    Escrow storage escrow = escrows[escrowId];
+    require(escrow.funded && !escrow.released, "Invalid state");
+    
+    // Buyer can release anytime
+    // Others can only release after timeout
+    require(
+        msg.sender == escrow.buyer || 
+        block.timestamp >= escrow.releaseTime,
+        "Not authorized or timeout not reached"
+    );
+    
+    escrow.released = true;
+    IERC20(escrow.token).transfer(escrow.seller, escrow.amount);
+}
 ```
 
 ---
