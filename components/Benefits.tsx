@@ -68,8 +68,8 @@ const Benefits: React.FC = () => {
                       <Check size={12} className="text-brand-action font-bold" strokeWidth={4} />
                     </div>
                     <div>
-                      <span className="text-brand-primary font-bold block">Funds Held Securely</span>
-                      <span className="text-sm text-brand-secondary">Money stays in the smart contract until delivery.</span>
+                      <span className="text-brand-primary font-bold block">Non‑Custodial Escrow</span>
+                      <span className="text-sm text-brand-secondary">Funds are locked in a Lisk smart contract. No company can freeze or steal them.</span>
                     </div>
                   </li>
                   <li className="flex items-start gap-3">
@@ -77,8 +77,8 @@ const Benefits: React.FC = () => {
                       <Check size={12} className="text-brand-action font-bold" strokeWidth={4} />
                     </div>
                     <div>
-                      <span className="text-brand-primary font-bold block">Identity Verified</span>
-                      <span className="text-sm text-brand-secondary">Both parties are verified via phone/socials.</span>
+                      <span className="text-brand-primary font-bold block">Wallet = Identity</span>
+                      <span className="text-sm text-brand-secondary">Sellers sign escrow creation on-chain, and anyone can verify escrow status independently.</span>
                     </div>
                   </li>
                   <li className="flex items-start gap-3">
@@ -86,8 +86,8 @@ const Benefits: React.FC = () => {
                       <Check size={12} className="text-brand-action font-bold" strokeWidth={4} />
                     </div>
                     <div>
-                      <span className="text-brand-primary font-bold block">Dispute Support</span>
-                      <span className="text-sm text-brand-secondary">Human support team if things go wrong.</span>
+                      <span className="text-brand-primary font-bold block">Timeout Enforcement</span>
+                      <span className="text-sm text-brand-secondary">If one party goes inactive, the contract can auto-release or auto-refund based on the rules.</span>
                     </div>
                   </li>
                 </ul>
@@ -97,7 +97,7 @@ const Benefits: React.FC = () => {
                     <div className="w-8 h-8 rounded-full bg-brand-ice flex items-center justify-center border-2 border-white text-[10px] font-bold text-brand-primary">A</div>
                     <div className="w-8 h-8 rounded-full bg-brand-action flex items-center justify-center border-2 border-white text-[10px] font-bold text-white">B</div>
                   </div>
-                  <span className="text-xs font-bold text-brand-action">100% Money Back Guarantee</span>
+                  <span className="text-xs font-bold text-brand-action">Smart contract is the authority</span>
                 </div>
               </div>
             </div>
@@ -112,24 +112,24 @@ const Benefits: React.FC = () => {
               Why Sellers & Buyers <br />Switch to Vouch
             </h2>
             <p className="text-lg text-brand-secondary mb-10">
-              Building trust takes years. Losing it takes seconds. Vouch secures the trust instantly.
+              Marketplace-level trust for DM-based transactions — without becoming a marketplace.
             </p>
 
             <div className="space-y-10">
               <FeatureRow
                 icon={Wallet}
-                title="Universal Payment Methods"
-                desc="Your buyers pay with what they have (BCA, Mandiri, GoPay, OVO). You get paid where you want."
+                title="No Login, No Registration"
+                desc="If you can send a link, you can use Vouch. Share an escrow link in DMs and transact like you already do."
               />
               <FeatureRow
                 icon={Banknote}
-                title="Instant Settlement"
-                desc="Smart contracts execute immediately upon confirmation. No manual reviews, no 3-day holding periods."
+                title="Hybrid Fiat + Crypto"
+                desc="Pay with USDC/IDRX on Lisk, or pay with QRIS/Virtual Account via Xendit. One escrow flow, one set of on-chain rules."
               />
               <FeatureRow
                 icon={Scale}
-                title="Fair Dispute Resolution"
-                desc="Our arbitration system protects both sides. Evidence-based resolution ensures fair outcomes."
+                title="Neutral, Deterministic Outcomes"
+                desc="Escrow creation, locking, release/refund, and timeouts are enforced by the contract — the backend only coordinates, never controls funds."
               />
             </div>
           </div>

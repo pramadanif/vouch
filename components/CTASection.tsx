@@ -1,4 +1,5 @@
 import React from 'react';
+import Link from 'next/link';
 import Button from './Button';
 
 const CTASection: React.FC = () => {
@@ -12,21 +13,23 @@ const CTASection: React.FC = () => {
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-24 md:py-32 relative z-10 text-center">
         <h2 className="text-4xl md:text-6xl font-bold text-white mb-8 tracking-tight leading-tight drop-shadow-sm">
-          Stop wondering if they'll pay. <br/>
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-ice to-white">Start selling with certainty.</span>
+          Trust your DMs. <br/>
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-ice to-white">Add escrow to any chat sale.</span>
         </h2>
         <p className="text-xl text-brand-ice/80 mb-12 max-w-2xl mx-auto leading-relaxed font-light">
-          Join 2,000+ sellers who closed Rp 5B+ in safe transactions last month. 
-          Create your first link in 30 seconds.
+          Vouch is decentralized escrow infrastructure for social commerce on Lisk.
+          Turn a payment link into on-chain escrow — without becoming a marketplace.
         </p>
         
         <div className="flex flex-col sm:flex-row justify-center gap-6 items-center">
-          <Button variant="white" size="lg" className="text-lg px-10 py-4 shadow-2xl shadow-brand-primary/50 font-bold text-brand-action hover:scale-105 transition-transform">
-            Start Selling Safely
-          </Button>
-          <button className="px-8 py-4 rounded-lg border border-brand-ice/30 text-white font-semibold hover:bg-white/10 transition-all backdrop-blur-sm">
-            Contact Sales
-          </button>
+          <Link href="/create">
+            <Button variant="white" size="lg" className="text-lg px-10 py-4 shadow-2xl shadow-brand-primary/50 font-bold text-brand-action hover:scale-105 transition-transform">
+              Create escrow link
+            </Button>
+          </Link>
+          <Link href="/demo/seller" className="px-8 py-4 rounded-lg border border-brand-ice/30 text-white font-semibold hover:bg-white/10 transition-all backdrop-blur-sm">
+            See demo
+          </Link>
         </div>
         
         <div className="mt-16 flex flex-col items-center gap-3">
@@ -34,9 +37,9 @@ const CTASection: React.FC = () => {
               <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=40&h=40" className="w-10 h-10 rounded-full border-2 border-brand-primary" alt="User" />
               <img src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=40&h=40" className="w-10 h-10 rounded-full border-2 border-brand-primary" alt="User" />
               <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=40&h=40" className="w-10 h-10 rounded-full border-2 border-brand-primary" alt="User" />
-              <div className="w-10 h-10 rounded-full border-2 border-brand-primary bg-brand-ice text-brand-primary flex items-center justify-center text-xs font-bold">+2k</div>
+              <div className="w-10 h-10 rounded-full border-2 border-brand-primary bg-brand-ice text-brand-primary flex items-center justify-center text-xs font-bold">DMs</div>
            </div>
-           <p className="text-xs text-brand-ice/60 tracking-widest uppercase">No credit card required · Cancel anytime</p>
+           <p className="text-xs text-brand-ice/60 tracking-widest uppercase">No login · No registration · No marketplace</p>
         </div>
       </div>
     </section>
@@ -44,5 +47,3 @@ const CTASection: React.FC = () => {
 };
 
 export default CTASection;
-
-//test

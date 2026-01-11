@@ -34,11 +34,11 @@ const HowItWorks: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <div className="text-center max-w-3xl mx-auto mb-16">
           <h2 className="text-3xl md:text-4xl font-bold text-brand-primary mb-6 tracking-tight">
-            Simple enough for <span className="text-brand-action">everyone.</span><br />
-            Secure enough for <span className="text-brand-action">banks.</span>
+            Built for <span className="text-brand-action">DMs.</span><br />
+            Secured by <span className="text-brand-action">escrow.</span>
           </h2>
           <p className="text-lg text-brand-secondary font-light">
-            We stripped away the crypto jargon. It's just a secure link.
+            Vouch turns a simple payment link into an on-chain escrow contract on Lisk.
           </p>
         </div>
 
@@ -47,25 +47,25 @@ const HowItWorks: React.FC = () => {
             step="1"
             icon={FileText}
             title="Create Link"
-            description="Enter item name and price. Vouch generates a secure payment link in seconds."
+            description="Seller sets item, price, and timeout. The seller signs escrow creation on Lisk, then shares the link in a DM."
           />
           <StepCard
             step="2"
             icon={Lock}
             title="Buyer Pays"
-            description="Buyer pays via bank transfer or e-wallet. Funds are locked in the smart contract."
+            description="Buyer pays with USDC/IDRX on Lisk or via QRIS/Virtual Account. Fiat is verified off-chain, escrow rules stay on-chain."
           />
           <StepCard
             step="3"
             icon={ClipboardCheck}
-            title="Ship & Earn"
-            description="Ship the item. Once received, the money is instantly released to your account."
+            title="Ship & Release"
+            description="Seller ships. Buyer confirms receipt to release funds, or timeout enforcement triggers an automatic release/refund if someone is inactive."
           />
         </div>
 
         <div className="mt-16 text-center">
-          <a href="#" className="inline-flex items-center gap-2 text-brand-primary font-semibold hover:text-brand-action transition-colors">
-            Read the full guide <ArrowRight size={16} />
+          <a href="/deck" className="inline-flex items-center gap-2 text-brand-primary font-semibold hover:text-brand-action transition-colors">
+            See the full flow <ArrowRight size={16} />
           </a>
         </div>
       </div>

@@ -30,29 +30,29 @@ const FAQItem = ({ question, answer }: { question: string, answer: string }) => 
 
 const FAQ: React.FC = () => {
   return (
-    <section className="py-24 bg-white">
+    <section id="faq" className="py-24 bg-white">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
           <h2 className="text-3xl font-bold text-brand-primary mb-4">Frequently Asked Questions</h2>
-          <p className="text-brand-secondary">Everything you need to know about selling safely.</p>
+          <p className="text-brand-secondary">Everything you need to know about using Vouch in DMs.</p>
         </div>
 
         <div className="bg-brand-surface/30 rounded-3xl p-8 border border-brand-surface">
             <FAQItem 
-                question="Is Vouch really free to use?"
-                answer="Yes! It is completely free to create links. We charge a small 1% fee only when a transaction is successfully completed."
+                question="Do I need blockchain knowledge to use Vouch?"
+                answer="No. There’s no account registration and no confusing crypto UX. If you can send a link in DM, you can use Vouch."
             />
             <FAQItem 
-                question="How do I get my money?"
-                answer="Once the buyer confirms receipt of the item, the funds are instantly released to your Vouch balance. You can withdraw to any local bank account instantly."
+                question="Is Vouch a marketplace?"
+                answer="No. Vouch is escrow infrastructure. You keep selling on Instagram, WhatsApp, TikTok, or Facebook — Vouch just adds a neutral trust layer to your payment link."
             />
             <FAQItem 
-                question="What if the buyer claims they didn't receive it?"
-                answer="We use delivery tracking integration. If the courier marks it as delivered, you are protected. In complex cases, our support team reviews chat logs and evidence."
+                question="What if one party disappears or goes inactive?"
+                answer="Escrow contracts include timeout enforcement. Depending on the rules, funds can auto-release or auto-refund when a party is inactive. The smart contract is the final authority."
             />
             <FAQItem 
-                question="Does the buyer need to download an app?"
-                answer="No. This is crucial for conversion. The buyer just clicks your link, sees the details, and pays via a mobile-optimized web page."
+                question="How can buyers pay?"
+                answer="Vouch supports crypto payments (USDC or IDRX on Lisk) and fiat payments (QRIS / Virtual Account via Xendit). Regardless of payment method, escrow logic stays on-chain."
             />
         </div>
       </div>

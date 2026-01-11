@@ -29,28 +29,28 @@ const Testimonials: React.FC = () => {
             Trusted by the <br/><span className="italic font-serif">Community</span>
           </h2>
           <p className="text-brand-secondary text-lg">
-            From vintage sneaker collectors to digital artists, see why sellers are switching to Vouch.
+            From Instagram sellers to WhatsApp merchants, see why people switch to Vouch for safer DM-based transactions.
           </p>
         </div>
 
         <div className="grid md:grid-cols-3 gap-6">
             <TestimonialCard 
                 name="Sarah K."
-                role="Thrift Store Owner"
+                role="Instagram Seller"
                 avatar="https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=100&h=100"
-                text="I used to lose 3-4 sales a week because people were scared to transfer first. With Vouch, they pay immediately. It's a no-brainer."
+                text="Buyers used to hesitate because they were scared to pay first. With Vouch, they see the escrow and pay confidently from inside the chat."
             />
              <TestimonialCard 
                 name="Budi S."
-                role="Sneaker Collector"
+                role="WhatsApp Buyer"
                 avatar="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=100&h=100"
-                text="Bought a pair of Jordans for 5jt. Seller was anon on Twitter. Used Vouch, felt 100% safe. The shoes arrived, I clicked release. Easy."
+                text="Bought a pair of sneakers from someone I didn’t know on WhatsApp. Funds stayed in escrow until the package arrived, then I released it. Simple."
             />
              <TestimonialCard 
                 name="Jessica L."
-                role="Digital Illustrator"
+                role="TikTok Live Seller"
                 avatar="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=100&h=100"
-                text="For commissions, Vouch is perfect. The client deposits the money, I do the work, and I know I'm guaranteed to get paid when I deliver."
+                text="Selling during live streams is chaotic. Now I just send one link in DM, the buyer pays, I ship, and the release is handled by escrow."
             />
         </div>
       </div>
