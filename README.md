@@ -135,11 +135,11 @@ graph TB
     end
 
     subgraph Backend["⚙️ Backend API (Express.js)"]
-        EscrowRoutes["/api/escrow/*<br/>CRUD Operations"]
+        EscrowRoutes["/api/escrow/*<br/>Metadata Storage"]
         PaymentRoutes["/api/payment/*<br/>Xendit Integration"]
         FaucetRoutes["/api/faucet/*<br/>Token Distribution"]
         Prisma[(PostgreSQL<br/>Metadata Storage)]
-        HotWallet["🔐 Protocol Wallet<br/>Signs Transactions"]
+        HotWallet["🔐 Protocol Wallet<br/>Funds Fiat Escrows"]
     end
 
     subgraph Blockchain["⛓️ Lisk Sepolia Testnet"]
@@ -156,22 +156,27 @@ graph TB
     Seller --> Create
     Buyer --> Pay
     
-    Create --> EscrowRoutes
+    %% Seller creates escrow directly on-chain
+    Create -->|"createEscrow()<br/>(Seller signs)"| VouchEscrow
+    Create -->|"Save metadata"| EscrowRoutes
     EscrowRoutes --> Prisma
-    EscrowRoutes --> VouchEscrow
     
+    %% Fiat payment flow
     Pay --> PaymentRoutes
     PaymentRoutes --> Xendit
-    Xendit -.Webhook.-> PaymentRoutes
-    PaymentRoutes --> HotWallet
-    HotWallet --> VouchEscrow
+    Xendit -."Webhook<br/>(Payment confirmed)".-> PaymentRoutes
+    PaymentRoutes -->|"Fund escrow<br/>+ markFunded()"| HotWallet
+    HotWallet -->|"Transfer USDC/IDRX<br/>+ markFunded()"| VouchEscrow
+    
+    %% Crypto payment flow (direct)
+    Pay -."Crypto payment<br/>(Buyer signs)".-> VouchEscrow
     
     Dashboard --> EscrowRoutes
     Faucet --> FaucetRoutes
     FaucetRoutes --> MockUSDC
     FaucetRoutes --> MockIDRX
     
-    EscrowRoutes -.Read.-> VouchEscrow
+    EscrowRoutes -."Read state".-> VouchEscrow
 ```
 
 ### Technology Architecture
@@ -250,7 +255,7 @@ stateDiagram-v2
 |----------|-----------|----------------|-------------|
 | `createEscrow` | `(address token, uint256 amount, uint256 releaseTime) returns (uint256)` | Public | Create new escrow (seller = msg.sender) |
 | `fundEscrow` | `(uint256 escrowId)` | Public | Fund escrow directly with crypto (buyer must approve token first) |
-| `markFunded` | `(uint256 escrowId, address buyer)` | Protocol Only | Mark escrow as funded after fiat payment verification |
+| `markFunded` | `(uint256 escrowId, address buyer)` | Protocol Only | Mark escrow as funded after fiat payment verification. Protocol wallet transfers IDRX to contract before calling this. |
 | `releaseFunds` | `(uint256 escrowId)` | Buyer/Protocol | Release funds to seller (immediate if buyer, after timeout if protocol) |
 | `cancelEscrow` | `(uint256 escrowId)` | Protocol Only | Cancel unfunded escrow |
 | `refundEscrow` | `(uint256 escrowId)` | Protocol Only | Refund funded escrow to buyer (dispute resolution) |
@@ -293,13 +298,23 @@ event ProtocolWalletUpdated(address indexed oldWallet, address indexed newWallet
 
 ```mermaid
 sequenceDiagram
-    participant Buyer
+    participant Seller
     participant Frontend
     participant Backend
     participant Xendit
+    participant ProtocolWallet as Protocol Wallet
     participant Lisk
-    participant Seller
+    participant Buyer
 
+    Note over Seller: Seller creates escrow
+    Seller->>Frontend: Open /create page
+    Seller->>Lisk: createEscrow(token, amount, releaseTime)<br/>(Seller signs with wallet)
+    Lisk-->>Seller: escrowId created
+    Seller->>Backend: POST /api/escrow/create<br/>(Save metadata + txHash)
+    Backend->>Backend: Store in PostgreSQL
+    Backend-->>Seller: {id: "abc123", paymentUrl}
+    
+    Note over Buyer: Buyer pays with fiat
     Buyer->>Frontend: Open payment link (/pay/abc123)
     Frontend->>Backend: GET /api/escrow/abc123
     Backend-->>Frontend: Escrow details
@@ -319,7 +334,10 @@ sequenceDiagram
     Backend->>Backend: Generate buyerToken
     Backend->>Backend: Update DB: status=FUNDED
     
-    Backend->>Lisk: markFunded(escrowId, buyerAddress)<br/>(via Protocol Wallet)
+    Note over ProtocolWallet,Lisk: Protocol Wallet funds escrow
+    Backend->>ProtocolWallet: Trigger funding
+    ProtocolWallet->>Lisk: approve(VouchEscrow, amount)<br/>(ERC20 approval)
+    ProtocolWallet->>Lisk: Transfer USDC/IDRX to escrow<br/>+ markFunded(escrowId, buyerAddress)
     Lisk-->>Backend: Transaction confirmed
     
     loop Status Polling
@@ -334,7 +352,8 @@ sequenceDiagram
     Buyer->>Frontend: Click "Release Funds"
     Frontend->>Backend: POST /api/escrow/abc123/release<br/>{buyerToken: "xxx"}
     Backend->>Backend: Verify buyerToken
-    Backend->>Lisk: releaseFunds(escrowId)
+    Backend->>ProtocolWallet: Trigger release
+    ProtocolWallet->>Lisk: releaseFunds(escrowId)
     Lisk->>Seller: Transfer tokens to seller wallet
     Lisk-->>Backend: Transaction confirmed
     Backend-->>Frontend: {status: "RELEASED"}
@@ -390,6 +409,8 @@ No authentication required for read operations. Write operations (release funds)
 ### Escrow Endpoints
 
 #### Create Escrow
+
+> **Note:** This endpoint is called **after** the seller has already created the escrow on-chain by calling `createEscrow()` directly with their wallet. This endpoint only stores metadata and the transaction hash in the database.
 
 ```http
 POST /api/escrow/create
