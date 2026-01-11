@@ -37,6 +37,7 @@ const Header: React.FC = () => {
           <a href="#how-it-works" className="text-sm font-medium text-brand-secondary hover:text-brand-primary transition-colors hover:bg-brand-ice/30 px-3 py-2 rounded-lg">How It Works</a>
           <a href="#safety" className="text-sm font-medium text-brand-secondary hover:text-brand-primary transition-colors hover:bg-brand-ice/30 px-3 py-2 rounded-lg">Safety</a>
           <a href="/faucet" className="text-sm font-medium text-brand-secondary hover:text-brand-primary transition-colors hover:bg-brand-ice/30 px-3 py-2 rounded-lg">Faucet</a>
+          <a href="/dashboard" className="text-sm font-medium text-brand-secondary hover:text-brand-primary transition-colors hover:bg-brand-ice/30 px-3 py-2 rounded-lg">Dashboard</a>
         </nav>
 
         {/* Auth & CTA */}
