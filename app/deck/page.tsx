@@ -382,7 +382,7 @@ export default function DeckPage() {
     const CurrentSlide = SLIDES[current];
 
     return (
-        <div className="w-screen h-screen bg-white overflow-hidden font-sans select-none">
+        <div className="w-screen h-screen bg-white overflow-hidden font-sans">
             {/* Background */}
             <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-30 bg-center z-0"></div>
 
