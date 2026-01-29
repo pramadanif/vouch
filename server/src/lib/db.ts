@@ -7,6 +7,15 @@ const prisma = new PrismaClient();
 export type EscrowRecord = Escrow;
 export { EscrowStatus };
 
+// ============ TIMEOUT CONFIGURATION ============
+// These define the escrow security timeouts
+export const ESCROW_TIMEOUTS = {
+  CREATION_EXPIRY_DAYS: 7,        // Cancel unfunded escrows after 7 days
+  SHIPPING_DEADLINE_DAYS: 30,     // Refund if seller doesn't ship within 30 days of funding
+  AUTO_RELEASE_DAYS: 14,          // Auto-release to seller 14 days after shipping
+  DISPUTE_WINDOW_DAYS: 3,         // Buyer can dispute within 3 days of auto-release prompt
+};
+
 // Create new escrow record
 export async function createEscrowRecord(data: {
   sellerAddress: string;
@@ -90,7 +99,7 @@ export async function updateEscrowXendit(id: string, data: {
   });
 }
 
-// Mark escrow as funded
+// Mark escrow as funded (with timestamp)
 export async function markEscrowFunded(id: string, buyerAddress?: string, buyerToken?: string): Promise<void> {
   await prisma.escrow.update({
     where: { id },
@@ -98,15 +107,49 @@ export async function markEscrowFunded(id: string, buyerAddress?: string, buyerT
       status: 'FUNDED',
       buyerAddress: buyerAddress || null,
       buyerToken: buyerToken || null,
+      fundedAt: new Date(), // Track when funded
     },
   });
 }
 
-// Mark escrow as released
+// Mark escrow as released (with timestamp)
 export async function markEscrowReleased(id: string): Promise<void> {
+  const now = new Date();
   await prisma.escrow.update({
     where: { id },
-    data: { status: 'RELEASED' },
+    data: { 
+      status: 'RELEASED',
+      releasedAt: now,
+      // If not already delivered, mark as delivered too (auto-release case)
+      deliveredAt: now,
+    },
+  });
+}
+
+// Mark escrow as shipped (NEW: with timestamp and auto-release calculation)
+export async function markEscrowShipped(id: string, proof: string): Promise<void> {
+  const now = new Date();
+  const autoReleaseAt = new Date(now.getTime() + ESCROW_TIMEOUTS.AUTO_RELEASE_DAYS * 24 * 60 * 60 * 1000);
+  
+  await prisma.escrow.update({
+    where: { id },
+    data: {
+      status: 'SHIPPED',
+      shipmentProof: proof,
+      shippedAt: now,
+      autoReleaseAt: autoReleaseAt, // 14 days from now
+    },
+  });
+}
+
+// Mark escrow as delivered (buyer confirmed - NEW)
+export async function markEscrowDelivered(id: string): Promise<void> {
+  await prisma.escrow.update({
+    where: { id },
+    data: {
+      status: 'DELIVERED',
+      deliveredAt: new Date(),
+    },
   });
 }
 
@@ -118,11 +161,79 @@ export async function markEscrowCancelled(id: string): Promise<void> {
   });
 }
 
-// Mark escrow as refunded (NEW for Medium Priority)
+// Mark escrow as refunded
 export async function markEscrowRefunded(id: string): Promise<void> {
   await prisma.escrow.update({
     where: { id },
     data: { status: 'REFUNDED' },
+  });
+}
+
+// Mark escrow as disputed (NEW)
+export async function markEscrowDisputed(id: string, reason: string): Promise<void> {
+  await prisma.escrow.update({
+    where: { id },
+    data: {
+      status: 'DISPUTED',
+      disputedAt: new Date(),
+      disputeReason: reason,
+    },
+  });
+}
+
+// Resolve dispute (NEW)
+export async function resolveDispute(id: string, resolution: 'REFUNDED' | 'RELEASED', notes: string): Promise<void> {
+  const now = new Date();
+  await prisma.escrow.update({
+    where: { id },
+    data: {
+      status: resolution,
+      disputeResolution: notes,
+      releasedAt: resolution === 'RELEASED' ? now : null,
+    },
+  });
+}
+
+// ============ CRON JOB QUERIES ============
+
+// Get escrows ready for auto-release (14 days after shipping, buyer didn't confirm)
+export async function getEscrowsForAutoRelease(): Promise<Escrow[]> {
+  const now = new Date();
+  return prisma.escrow.findMany({
+    where: {
+      status: 'SHIPPED',
+      autoReleaseAt: { lte: now },
+    },
+  });
+}
+
+// Get escrows for auto-refund (30 days funded, seller didn't ship)
+export async function getEscrowsForAutoRefund(): Promise<Escrow[]> {
+  const deadline = new Date(Date.now() - ESCROW_TIMEOUTS.SHIPPING_DEADLINE_DAYS * 24 * 60 * 60 * 1000);
+  return prisma.escrow.findMany({
+    where: {
+      status: 'FUNDED',
+      fundedAt: { lte: deadline },
+    },
+  });
+}
+
+// Get expired unfunded escrows (7 days old, never funded)
+export async function getExpiredUnfundedEscrows(): Promise<Escrow[]> {
+  const deadline = new Date(Date.now() - ESCROW_TIMEOUTS.CREATION_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+  return prisma.escrow.findMany({
+    where: {
+      status: { in: ['CREATED', 'WAITING_PAYMENT'] },
+      createdAt: { lte: deadline },
+    },
+  });
+}
+
+// Mark escrow as expired (NEW)
+export async function markEscrowExpired(id: string): Promise<void> {
+  await prisma.escrow.update({
+    where: { id },
+    data: { status: 'EXPIRED' },
   });
 }
 

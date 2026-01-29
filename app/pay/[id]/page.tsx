@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Check, Lock, Loader2, Clock, ArrowRight } from 'lucide-react';
+import { Check, Lock, Loader2, Clock, ArrowRight, Package, ExternalLink, AlertCircle } from 'lucide-react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useAccount, useConnect, useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi';
 import { parseUnits } from 'viem';
@@ -27,7 +27,7 @@ export default function PayLinkPage() {
     const escrowId = params.id as string;
 
     const [escrow, setEscrow] = useState<EscrowDetails | null>(null);
-    const [status, setStatus] = useState<'loading' | 'pending' | 'paying' | 'verifying' | 'secured' | 'completed' | 'error'>('loading');
+    const [status, setStatus] = useState<'loading' | 'pending' | 'paying' | 'verifying' | 'secured' | 'shipped' | 'completed' | 'error'>('loading');
     const [error, setError] = useState('');
     const [isSimulating, setIsSimulating] = useState(false);
     const [isConfirming, setIsConfirming] = useState(false);
@@ -78,13 +78,16 @@ export default function PayLinkPage() {
     // Handle auto-sync from on-chain state
     useEffect(() => {
         if (escrowOnChain) {
-            // getEscrow returns [seller, buyer, token, amount, releaseTime, funded, released, cancelled]
-            // We check 'released' (index 6)
-            const isReleased = Array.isArray(escrowOnChain) ? escrowOnChain[6] : (escrowOnChain as any).released;
+            // getEscrow returns [seller, buyer, token, amount, releaseTime, funded, shipped, released, cancelled]
+            // We check 'shipped' (index 6) and 'released' (index 7)
+            const isShipped = Array.isArray(escrowOnChain) ? escrowOnChain[6] : (escrowOnChain as any).shipped;
+            const isReleased = Array.isArray(escrowOnChain) ? escrowOnChain[7] : (escrowOnChain as any).released;
 
             if (isReleased && status !== 'completed') {
                 console.log('Detected on-chain release! Syncing...');
                 notifyBackendRelease();
+            } else if (isShipped && status === 'secured') {
+                setStatus('shipped');
             }
         }
     }, [escrowOnChain, status]);
@@ -143,6 +146,7 @@ export default function PayLinkPage() {
             const data = await api.getEscrow(escrowId);
             setEscrow(data);
             if (data.status === 'RELEASED') setStatus('completed');
+            else if (data.status === 'SHIPPED') setStatus('shipped');
             else if (data.status === 'FUNDED') setStatus('secured');
             else {
                 // Only set to pending if we are not verifying/paying (to preserve UI state)
@@ -186,9 +190,9 @@ export default function PayLinkPage() {
             const poll = setInterval(async () => {
                 try {
                     const data = await api.getEscrow(escrowId);
-                    if (data.status === 'FUNDED' || data.status === 'RELEASED') {
+                    if (data.status === 'FUNDED' || data.status === 'SHIPPED' || data.status === 'RELEASED') {
                         setEscrow(data);
-                        setStatus(data.status === 'RELEASED' ? 'completed' : 'secured');
+                        setStatus(data.status === 'RELEASED' ? 'completed' : data.status === 'SHIPPED' ? 'shipped' : 'secured');
                         clearInterval(poll);
                     }
                 } catch { }
@@ -196,6 +200,26 @@ export default function PayLinkPage() {
             return () => clearInterval(poll);
         }
     }, [searchParams, escrowId]);
+
+    // Auto-refresh when status is SHIPPED to catch buyer release updates
+    useEffect(() => {
+        if (status !== 'shipped' || !isMounted) return;
+
+        const interval = setInterval(async () => {
+            try {
+                const data = await api.getEscrow(escrowId);
+                setEscrow(data);
+                if (data.status === 'RELEASED') {
+                    setStatus('completed');
+                    clearInterval(interval);
+                }
+            } catch (err) {
+                console.error('Auto-refresh failed:', err);
+            }
+        }, 3000); // Poll every 3 seconds when SHIPPED
+
+        return () => clearInterval(interval);
+    }, [status, escrowId, isMounted]);
 
     const handlePay = async () => {
         setStatus('paying');
@@ -238,18 +262,19 @@ export default function PayLinkPage() {
 
         try {
             if (isCryptoBuyer && escrow?.escrowId) {
-                // TRUE DECENTRALIZATION: Buyer calls releaseFunds directly on-chain
-                console.log('Buyer releasing funds on-chain:', escrow.escrowId);
+                // TRUE DECENTRALIZATION: Buyer calls confirmDelivery directly on-chain
+                // This is the SECURE way - only buyer can confirm receipt
+                console.log('Buyer confirming delivery on-chain:', escrow.escrowId);
 
                 try {
                     const hash = await writeContractAsync({
                         address: VOUCH_ESCROW_ADDRESS as `0x${string}`,
                         abi: VOUCH_ESCROW_ABI,
-                        functionName: 'releaseFunds',
+                        functionName: 'confirmDelivery',
                         args: [BigInt(escrow.escrowId)]
                     });
 
-                    console.log('Release tx submitted:', hash);
+                    console.log('Confirm delivery tx submitted:', hash);
 
                     // Optimistic wait then notify backend
                     await new Promise(resolve => setTimeout(resolve, 5000));
@@ -308,6 +333,8 @@ export default function PayLinkPage() {
 
                 await fetchEscrow();
                 setStatus('secured');
+                // Reset step so it doesn't trigger again on next tx (e.g. release)
+                setCryptoStep('approve');
             }
 
         };
@@ -659,22 +686,52 @@ export default function PayLinkPage() {
                 )}
 
                 {/* Success States */}
-                {(status === 'secured' || status === 'completed') && escrow && (
+                {(status === 'secured' || status === 'shipped' || status === 'completed') && escrow && (
                     <FadeIn className="max-w-lg mx-auto">
                         <div className="bg-white rounded-2xl shadow-2xl p-10 text-center">
-                            <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-6 border border-green-100">
-                                <Check size={40} className="text-green-600" />
+                            <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 border ${status === 'completed' ? 'bg-green-50 border-green-100' :
+                                status === 'shipped' ? 'bg-blue-50 border-blue-100' :
+                                    'bg-emerald-50 border-emerald-100'
+                                }`}>
+                                {status === 'completed' ? (
+                                    <Check size={40} className="text-green-600" />
+                                ) : status === 'shipped' ? (
+                                    <Package size={40} className="text-blue-600" />
+                                ) : (
+                                    <Lock size={40} className="text-emerald-600" />
+                                )}
                             </div>
+
                             <h2 className="text-2xl font-bold text-brand-primary mb-3">
-                                {status === 'completed' ? 'Transaction Complete!' : 'Payment Secured!'}
+                                {status === 'completed' ? 'Transaction Complete!' :
+                                    status === 'shipped' ? 'Item Shipped!' :
+                                        'Payment Secured!'}
                             </h2>
-                            <p className="text-brand-secondary mb-8">
+
+                            <p className="text-brand-secondary mb-6">
                                 {status === 'completed'
                                     ? 'Funds have been released to the seller.'
-                                    : 'Your payment is safe. Confirm when you receive your item.'}
+                                    : status === 'shipped'
+                                        ? 'Seller has shipped your item. Please verify upon arrival.'
+                                        : 'Your funds are held securely. Waiting for seller to ship.'}
                             </p>
 
-                            {status === 'secured' && (
+                            {/* Shipment Proof Link */}
+                            {escrow.shipmentProof && (
+                                <div className="mb-6">
+                                    <a
+                                        href={escrow.shipmentProof.startsWith('http') ? escrow.shipmentProof : `https://google.com/search?q=${escrow.shipmentProof}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium bg-blue-50 px-4 py-2 rounded-lg transition-colors border border-blue-100"
+                                    >
+                                        <ExternalLink size={16} />
+                                        View Shipment Proof
+                                    </a>
+                                </div>
+                            )}
+
+                            {(status === 'secured' || status === 'shipped') && (
                                 <>
                                     {error && (
                                         <div className="p-4 bg-red-50 border border-red-100 text-red-700 rounded-xl text-sm mb-4">
@@ -684,10 +741,20 @@ export default function PayLinkPage() {
                                     {/* Buyer can be: (1) has buyerToken from fiat, OR (2) connected wallet is the buyer */}
                                     {(buyerToken || (isConnected && address && escrow.buyerAddress && address.toLowerCase() === escrow.buyerAddress.toLowerCase())) ? (
                                         <>
-                                            <Button variant="primary" size="lg" className="w-full mb-4" onClick={handleConfirmReceipt} disabled={isConfirming}>
-                                                {isConfirming ? <><Loader2 className="animate-spin mr-2" size={18} />Confirming...</> : 'Confirm Item Received'}
-                                            </Button>
-                                            <p className="text-xs text-brand-secondary mb-6">This releases {formatPrice(escrow.amountIdr)} to the seller</p>
+                                            {status === 'shipped' ? (
+                                                <Button variant="primary" size="lg" className="w-full mb-4" onClick={handleConfirmReceipt} disabled={isConfirming}>
+                                                    {isConfirming ? <><Loader2 className="animate-spin mr-2" size={18} />Confirming...</> : 'Confirm Item Received'}
+                                                </Button>
+                                            ) : (
+                                                <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl mb-6">
+                                                    <p className="text-amber-800 text-sm font-medium">Waiting for Shipment</p>
+                                                    <p className="text-amber-700 text-xs mt-1">You can release funds once the seller provides shipment proof.</p>
+                                                </div>
+                                            )}
+
+                                            {status === 'shipped' && (
+                                                <p className="text-xs text-brand-secondary mb-6">This releases {formatPrice(escrow.amountIdr)} to the seller</p>
+                                            )}
                                         </>
                                     ) : (
                                         <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl mb-6">

@@ -358,10 +358,14 @@ sequenceDiagram
     Frontend->>Buyer: Show "Payment Secured" + buyerToken
     
     Note over Seller: Ships item to buyer
+    Seller->>Backend: POST /api/escrow/abc123/ship<br/>{proof: "tracking/photo"}
+    Backend->>Backend: Update DB: status=SHIPPED
+    Backend-->>Seller: {status: "SHIPPED"}
+    Frontend->>Buyer: Show "Item Shipped" + Proof
     
     alt Buyer confirms delivery
-        Buyer->>Frontend: Click "Release Funds"
-        Frontend->>Backend: POST /api/escrow/abc123/release<br/>{buyerToken: "xxx"}
+        Buyer->>Frontend: Verify proof & Click "Release Funds"
+        Frontend->>Backend: POST /api/escrow/abc123/confirm<br/>{buyerToken: "xxx"}
         Backend->>Backend: Verify buyerToken
         Backend->>ProtocolWallet: Trigger release
         ProtocolWallet->>Lisk: releaseFunds(escrowId)
@@ -403,6 +407,10 @@ sequenceDiagram
     Frontend->>Buyer: Show "Payment Secured"
     
     Note over Seller: Ships item to buyer
+    Seller->>Frontend: Upload shipment proof
+    Frontend->>Backend: POST /api/escrow/abc123/ship<br/>{proof}
+    Backend->>Backend: Status = SHIPPED
+    Frontend-->>Buyer: Show "Item Shipped" + Proof
     
     alt Buyer confirms delivery
         Buyer->>Lisk: releaseFunds(escrowId)

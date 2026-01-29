@@ -37,8 +37,8 @@ const ChatBubble = ({ isMe, text, time, isTyping = false, role }: { isMe: boolea
     // Seller (Me) = Blue (Default Instagram)
     // Buyer (Me) = Purple
     const meColorClass = role === 'buyer'
-        ? 'bg-[#8B5CF6]' // Purple-500
-        : 'bg-[#3797F0]'; // Instagram Blue
+        ? 'bg-[#0F2854]' // Brand Primary (Deep Navy) for Buyer/Me
+        : 'bg-[#1C4D8D]'; // Brand Action (Mid Blue) for Seller
 
     return (
         <div className={`flex w-full mb-1 ${isMe ? 'justify-end' : 'justify-start'} animate-fade-in`}>
@@ -62,7 +62,7 @@ const ChatBubble = ({ isMe, text, time, isTyping = false, role }: { isMe: boolea
 };
 
 const TypingIndicator = ({ isMe, role }: { isMe: boolean; role?: 'seller' | 'buyer' }) => {
-    const meColorClass = role === 'buyer' ? 'bg-[#8B5CF6]' : 'bg-[#3797F0]';
+    const meColorClass = role === 'buyer' ? 'bg-[#0F2854]' : 'bg-[#1C4D8D]';
 
     return (
         <div className={`flex w-full mb-1 ${isMe ? 'justify-end' : 'justify-start'} animate-fade-in`}>
@@ -82,7 +82,7 @@ const TypingIndicator = ({ isMe, role }: { isMe: boolean; role?: 'seller' | 'buy
 
 const VouchCard = ({ status = 'pending', role }: { status?: 'pending' | 'secured' | 'released'; role?: 'seller' | 'buyer' }) => {
     const isSecured = status === 'secured' || status === 'released';
-    const actionColorClass = role === 'buyer' ? 'bg-[#8B5CF6]' : 'bg-[#3797F0]';
+    const actionColorClass = role === 'buyer' ? 'bg-[#0F2854]' : 'bg-[#1C4D8D]';
 
     // Instagram Link Preview Style
     return (
@@ -109,7 +109,7 @@ const VouchCard = ({ status = 'pending', role }: { status?: 'pending' | 'secured
                     </p>
 
                     <button className={`w-full text-center text-sm font-semibold py-2.5 rounded-lg transition-colors ${isSecured
-                        ? 'bg-green-500 text-white'
+                        ? 'bg-[#F59E0B] text-white' // Amber/Gold for Secured (Premium)
                         : `${actionColorClass} text-white`
                         }`}>
                         {isSecured ? 'Payment Secured' : 'Pay Safely'}
@@ -234,7 +234,7 @@ const DemoChatPhone: React.FC<DemoChatPhoneProps> = ({
     );
 
     const CameraIcon = () => (
-        <div className="w-9 h-9 bg-[#3797F0] rounded-full flex items-center justify-center text-white shrink-0">
+        <div className="w-9 h-9 bg-[#1C4D8D] rounded-full flex items-center justify-center text-white shrink-0">
             <svg aria-label="Camera" fill="currentColor" height="20" role="img" viewBox="0 0 24 24" width="20">
                 <path d="M12.003 16.903a4.903 4.903 0 1 1 4.903-4.903 4.903 4.903 0 0 1-4.903 4.903Zm0-7.806a2.903 2.903 0 1 0 2.903 2.903 2.903 2.903 0 0 0-2.903-2.903Z"></path>
                 <path d="M22.863 6.965h-3.414l-1.077-2.673A2.324 2.324 0 0 0 16.216 3H7.788a2.326 2.326 0 0 0-2.156 1.292L4.555 6.965H1.141A1.141 1.141 0 0 0 0 8.106v11.758A1.141 1.141 0 0 0 1.141 21h21.722A1.141 1.141 0 0 0 24 19.864V8.106a1.141 1.141 0 0 0-1.137-1.141ZM12.003 18.903a6.903 6.903 0 1 1 6.903-6.903 6.903 6.903 0 0 1-6.903 6.903Z"></path>
@@ -249,7 +249,7 @@ const DemoChatPhone: React.FC<DemoChatPhoneProps> = ({
     );
 
     return (
-        <div className="relative w-[375px] h-[780px] bg-black rounded-[55px] shadow-2xl border-[6px] border-[#222] overflow-hidden ring-4 ring-[#111] mx-auto font-sans select-none">
+        <div className="relative w-[375px] h-[780px] bg-black rounded-[55px] shadow-2xl border-[8px] border-[#1a1a1a] overflow-hidden ring-1 ring-[#333] mx-auto font-sans select-none">
 
             {/* Screen Content */}
             <div className="absolute top-0 left-0 right-0 bottom-0 bg-white rounded-[48px] overflow-hidden flex flex-col">
