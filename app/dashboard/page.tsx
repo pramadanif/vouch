@@ -25,7 +25,45 @@ export default function DashboardPage() {
     const [selectedEscrowId, setSelectedEscrowId] = useState<string | null>(null);
     const [shipmentProof, setShipmentProof] = useState('');
     const [proofFile, setProofFile] = useState<File | null>(null);
-    const [isSubmittingProof, setIsSubmittingProof] = useState(false);
+    // Refund Modal State
+    const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
+    const [refundReason, setRefundReason] = useState('');
+    const [isSubmittingRefund, setIsSubmittingRefund] = useState(false);
+    const [isSubmittingProof, setIsSubmittingProof] = useState(false); // Added this based on the diff's implied new state
+
+
+
+    const submitRefund = async () => {
+        if (!selectedEscrowId) return;
+        if (!refundReason) return;
+
+        setIsSubmittingRefund(true);
+        try {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/escrow/${selectedEscrowId}/refund`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reason: refundReason, sellerAddress: address })
+            });
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to refund');
+
+            setIsRefundModalOpen(false);
+            fetchEscrows();
+        } catch (err: any) {
+            alert(err.message);
+        } finally {
+            setIsSubmittingRefund(false);
+        }
+    };
+
+    // ... existing stats code ...
+    // Note: I will insert the Refund button in the next replacement chunk or manually locate where to put it in the existing file structure if I can't do it all in one go easily without context.
+    // Actually, I should probably do this in multiple chunks for safety or be very careful with context.
+    // The previous file content shows `// Shipment Modal State` around line 23. I'll add Refund state there.
+
+    // Changing strategy: I will use multi_replace to add state, button, and modal separately.
+
 
     const fetchEscrows = useCallback(async () => {
         if (!address) return;
@@ -137,6 +175,12 @@ export default function DashboardPage() {
         setShipmentProof('');
         setProofFile(null);
         setIsShipModalOpen(true);
+    };
+
+    const handleRefund = (id: string) => {
+        setSelectedEscrowId(id);
+        setRefundReason('');
+        setIsRefundModalOpen(true);
     };
 
     const submitShipment = async () => {
@@ -379,15 +423,26 @@ export default function DashboardPage() {
                                                 </span>
 
                                                 {escrow.status === 'FUNDED' && (
-                                                    <Button
-                                                        onClick={() => handleShip(escrow.id)}
-                                                        size="sm"
-                                                        variant="outline"
-                                                        className="!py-1 !px-3 text-xs border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
-                                                    >
-                                                        <Package size={14} className="mr-1.5" />
-                                                        Mark Shipped
-                                                    </Button>
+                                                    <div className="flex gap-2">
+                                                        <Button
+                                                            onClick={() => handleShip(escrow.id)}
+                                                            size="sm"
+                                                            variant="outline"
+                                                            className="!py-1 !px-3 text-xs border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
+                                                        >
+                                                            <Package size={14} className="mr-1.5" />
+                                                            Mark Shipped
+                                                        </Button>
+                                                        <Button
+                                                            onClick={() => handleRefund(escrow.id)}
+                                                            size="sm"
+                                                            variant="outline"
+                                                            className="!py-1 !px-3 text-xs border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800"
+                                                        >
+                                                            <X size={14} className="mr-1.5" />
+                                                            Refund
+                                                        </Button>
+                                                    </div>
                                                 )}
                                                 <div className="flex items-center gap-2">
                                                     <button
@@ -412,7 +467,6 @@ export default function DashboardPage() {
                 </div>
             </main>
 
-            {/* Shipment Modal */}
             {isShipModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
                     <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 relative animate-in zoom-in-95 duration-200">
@@ -482,6 +536,58 @@ export default function DashboardPage() {
                                 >
                                     {isSubmittingProof ? <Loader2 size={18} className="animate-spin mr-2" /> : null}
                                     Confirm Shipment
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Refund Modal */}
+            {isRefundModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 relative animate-in zoom-in-95 duration-200">
+                        <button
+                            onClick={() => setIsRefundModalOpen(false)}
+                            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+                        >
+                            <X size={20} />
+                        </button>
+
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center text-red-600">
+                                <AlertCircle size={20} />
+                            </div>
+                            <h3 className="text-xl font-bold text-gray-900">Issue Refund</h3>
+                        </div>
+
+                        <div className="space-y-4">
+                            <p className="text-sm text-gray-600">
+                                Are you sure you want to refund this transaction? The funds will be returned to the buyer's wallet. This action cannot be undone.
+                            </p>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Reason for Refund
+                                </label>
+                                <textarea
+                                    value={refundReason}
+                                    onChange={(e) => setRefundReason(e.target.value)}
+                                    placeholder="e.g. Out of stock, Cannot fulfill order..."
+                                    className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-all min-h-[100px]"
+                                />
+                            </div>
+
+                            <div className="pt-2 flex gap-3">
+                                <Button variant="outline" className="flex-1" onClick={() => setIsRefundModalOpen(false)} disabled={isSubmittingRefund}>Cancel</Button>
+                                <Button
+                                    variant="primary"
+                                    className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+                                    onClick={submitRefund}
+                                    disabled={!refundReason || isSubmittingRefund}
+                                >
+                                    {isSubmittingRefund ? <Loader2 size={18} className="animate-spin mr-2" /> : null}
+                                    Confirm Refund
                                 </Button>
                             </div>
                         </div>

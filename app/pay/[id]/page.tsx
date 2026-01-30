@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Check, Lock, Loader2, Clock, ArrowRight, Package, ExternalLink, AlertCircle } from 'lucide-react';
+import { Check, Lock, Loader2, Clock, ArrowRight, Package, ExternalLink, AlertCircle, X } from 'lucide-react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useAccount, useConnect, useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi';
 import { parseUnits } from 'viem';
@@ -36,6 +36,11 @@ export default function PayLinkPage() {
     const [isMounted, setIsMounted] = useState(false);
     const [buyerToken, setBuyerTokenState] = useState<string | null>(null);
     const [, setCountdownTick] = useState(0); // Force re-render for countdown
+
+    // Dispute Modal
+    const [isDisputeModalOpen, setIsDisputeModalOpen] = useState(false);
+    const [disputeReason, setDisputeReason] = useState('');
+    const [isSubmittingDispute, setIsSubmittingDispute] = useState(false);
 
 
     const { address, isConnected } = useAccount();
@@ -306,6 +311,43 @@ export default function PayLinkPage() {
             }
             setError(err.message || 'Failed to release funds');
             setIsConfirming(false);
+        }
+    };
+
+    const handleOpenDispute = () => {
+        setDisputeReason('');
+        setIsDisputeModalOpen(true);
+    };
+
+    const submitDispute = async () => {
+        if (!disputeReason) return;
+        setIsSubmittingDispute(true);
+        try {
+            const body: any = { reason: disputeReason };
+            // Include auth: either buyerToken (fiat) or buyerAddress (crypto)
+            // But for crypto, we can't easily sign a message here without more complex UI. 
+            // For now, we'll send buyerAddress and backend checks if it matches.
+            // Ideally should sign a message "Dispute [Reason]" to prove ownership.
+            // MVP: Send buyerToken if exists, else send address.
+
+            if (buyerToken) body.buyerToken = buyerToken;
+            else if (address) body.buyerAddress = address;
+
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/escrow/${escrowId}/dispute`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to raise dispute');
+
+            setIsDisputeModalOpen(false);
+            fetchEscrow(); // Status should change to DISPUTED
+        } catch (err: any) {
+            alert(err.message);
+        } finally {
+            setIsSubmittingDispute(false);
         }
     };
 
@@ -753,7 +795,15 @@ export default function PayLinkPage() {
                                             )}
 
                                             {status === 'shipped' && (
-                                                <p className="text-xs text-brand-secondary mb-6">This releases {formatPrice(escrow.amountIdr)} to the seller</p>
+                                                <div className="mb-6 space-y-3">
+                                                    <p className="text-xs text-brand-secondary">This releases {formatPrice(escrow.amountIdr)} to the seller</p>
+                                                    <button
+                                                        onClick={handleOpenDispute}
+                                                        className="block w-full text-center text-xs text-red-500 hover:text-red-700 underline mt-4"
+                                                    >
+                                                        Resulting in a problem? Raise a Dispute
+                                                    </button>
+                                                </div>
                                             )}
                                         </>
                                     ) : (
@@ -784,6 +834,57 @@ export default function PayLinkPage() {
                     </FadeIn>
                 )}
             </main>
+            {/* Dispute Modal */}
+            {isDisputeModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 relative animate-in zoom-in-95 duration-200">
+                        <button
+                            onClick={() => setIsDisputeModalOpen(false)}
+                            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+                        >
+                            <X size={20} />
+                        </button>
+
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center text-red-600">
+                                <AlertCircle size={20} />
+                            </div>
+                            <h3 className="text-xl font-bold text-gray-900">Raise a Dispute</h3>
+                        </div>
+
+                        <div className="space-y-4">
+                            <p className="text-sm text-gray-600">
+                                If there is an issue with your order (damaged, incorrect, not received), you can raise a dispute. This will freeze the funds until resolved by Vouch support.
+                            </p>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Reason for Dispute
+                                </label>
+                                <textarea
+                                    value={disputeReason}
+                                    onChange={(e) => setDisputeReason(e.target.value)}
+                                    placeholder="Describe the issue in detail..."
+                                    className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-all min-h-[100px]"
+                                />
+                            </div>
+
+                            <div className="pt-2 flex gap-3">
+                                <Button variant="outline" className="flex-1" onClick={() => setIsDisputeModalOpen(false)} disabled={isSubmittingDispute}>Cancel</Button>
+                                <Button
+                                    variant="primary"
+                                    className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+                                    onClick={submitDispute}
+                                    disabled={!disputeReason || isSubmittingDispute}
+                                >
+                                    {isSubmittingDispute ? <Loader2 size={18} className="animate-spin mr-2" /> : null}
+                                    Submit Dispute
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
