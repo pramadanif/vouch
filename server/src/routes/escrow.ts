@@ -8,7 +8,13 @@ import {
     updateEscrowXendit,
     updateEscrowStatus,
     markEscrowFunded,
-    markEscrowReleased
+    markEscrowReleased,
+    markEscrowShipped,
+    markEscrowDelivered,
+    markEscrowRefunded,
+    markEscrowDisputed,
+    resolveDispute,
+    ESCROW_TIMEOUTS
 } from '../lib/db';
 import { getWalletManager } from '../lib/wallet';
 import { getXenditClient } from '../lib/xendit';
@@ -133,6 +139,7 @@ router.get('/:id', async (req: Request, res: Response) => {
             'CREATED': 'Waiting for payment',
             'WAITING_PAYMENT': 'Waiting for payment',
             'FUNDED': 'Payment secured',
+            'SHIPPED': 'Item Shipped',
             'RELEASED': 'Completed',
             'REFUNDED': 'Refunded',
             'CANCELLED': 'Cancelled'
@@ -155,7 +162,8 @@ router.get('/:id', async (req: Request, res: Response) => {
             xenditInvoiceUrl: escrow.xenditInvoiceUrl,
             createdAt: escrow.createdAt,
             currency: escrow.fiatCurrency === 'IDR' ? 'IDRX' : 'USDC',
-            fiatCurrency: escrow.fiatCurrency || 'IDR'
+            fiatCurrency: escrow.fiatCurrency || 'IDR',
+            shipmentProof: escrow.shipmentProof
         });
     } catch (error: any) {
         console.error('Get escrow error:', error);
@@ -177,6 +185,19 @@ router.post('/:id/crypto-funded', async (req: Request, res: Response) => {
         const escrow = await getEscrowById(id);
         if (!escrow) {
             return res.status(404).json({ error: 'Escrow not found' });
+        }
+
+        // Prevent reverting status if already advanced
+        // If already funded/shipped/released, we just return success (idempotent)
+        if (['FUNDED', 'SHIPPED', 'DELIVERED', 'RELEASED', 'COMPLETED'].includes(escrow.status)) {
+            console.log(`Escrow ${id} already in ${escrow.status} state, skipping crypto-funded update.`);
+            return res.json({
+                success: true,
+                message: 'Escrow already funded/advanced',
+                escrowId: id,
+                txHash,
+                buyerAddress
+            });
         }
 
         // Update escrow status to FUNDED and set buyer address
@@ -277,43 +298,83 @@ router.post('/:id/create-invoice', async (req: Request, res: Response) => {
 });
 
 /**
- * POST /api/escrow/:id/release
- * Release funds to seller (legacy - use /confirm instead)
+ * POST /api/escrow/:id/ship
+ * Seller uploads shipment proof
  */
-router.post('/:id/release', async (req: Request, res: Response) => {
-    try {
-        const { id } = req.params;
+router.post('/:id/ship', (req, res, next) => {
+    // Import upload middleware dynamically or assume it's available
+    const { upload } = require('../middlewares/upload');
+    upload.single('image')(req, res, async (err: any) => {
+        if (err) return res.status(400).json({ error: err.message });
 
-        const escrow = await getEscrowById(id);
-        if (!escrow) {
-            return res.status(404).json({ error: 'Escrow not found' });
-        }
+        try {
+            const { id } = req.params;
+            let { proof } = req.body;
 
-        if (escrow.status !== 'FUNDED') {
-            return res.status(400).json({ error: 'Escrow not in funded state' });
-        }
-
-        // Try to release on-chain
-        if (escrow.escrowId !== null) {
-            try {
-                const wallet = getWalletManager();
-                await wallet.releaseFunds(escrow.escrowId);
-            } catch (err: any) {
-                console.warn(`On-chain release failed: ${err.message}`);
+            // If file uploaded, use file path
+            if (req.file) {
+                const serverUrl = process.env.API_URL || 'http://localhost:3001';
+                // proof = `${serverUrl}/uploads/${req.file.filename}`;
+                // Store relative path or absolute URL? 
+                // Storing Absolute URL is better for Frontend simplicity, BUT localhost vs production...
+                // Let's store Absolute URL.
+                proof = `${serverUrl}/uploads/${req.file.filename}`;
             }
+
+            if (!proof) {
+                return res.status(400).json({ error: 'Shipment proof is required (link or image)' });
+            }
+
+            const escrow = await getEscrowById(id);
+            if (!escrow) {
+                return res.status(404).json({ error: 'Escrow not found' });
+            }
+
+            if (escrow.status !== 'FUNDED') {
+                return res.status(400).json({ error: 'Escrow must be funded before shipping' });
+            }
+
+            const { markEscrowShipped } = await import('../lib/db');
+            await markEscrowShipped(id, proof);
+
+            // Update on-chain
+            if (escrow.escrowId !== null) {
+                try {
+                    const wallet = getWalletManager();
+                    await wallet.markShipped(escrow.escrowId);
+                } catch (err: any) {
+                    console.warn(`On-chain markShipped failed: ${err.message}`);
+                }
+            }
+
+            res.json({
+                success: true,
+                message: 'Shipment proof uploaded',
+                status: 'SHIPPED',
+                proof,
+                autoReleaseAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString() // 14 days
+            });
+        } catch (error: any) {
+            console.error('Shipment proof error:', error);
+            res.status(500).json({ error: error.message });
         }
-
-        await markEscrowReleased(id);
-
-        res.json({
-            success: true,
-            message: 'Funds released to seller'
-        });
-    } catch (error: any) {
-        console.error('Release escrow error:', error);
-        res.status(500).json({ error: error.message });
-    }
+    });
 });
+
+/**
+ * ⚠️ REMOVED: POST /api/escrow/:id/release
+ * This endpoint was a CRITICAL SECURITY VULNERABILITY.
+ * 
+ * Reason: No authentication - anyone knowing the escrow ID could release funds.
+ * This bypassed the buyer confirmation requirement.
+ * 
+ * CORRECT WAY to release funds:
+ * 1. Buyer confirms receipt via /api/escrow/:id/confirm (with buyerToken)
+ * 2. Buyer confirms via /api/escrow/:id/confirm-crypto (with wallet signature)
+ * 3. Auto-release after 14 days via cron job (protects seller from griefing)
+ * 
+ * See: /api/escrow/:id/confirm and /api/escrow/:id/confirm-crypto below
+ */
 
 /**
  * POST /api/escrow/:id/confirm
@@ -339,8 +400,8 @@ router.post('/:id/confirm', async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Escrow not found' });
         }
 
-        if (escrow.status !== 'FUNDED') {
-            return res.status(400).json({ error: 'Escrow not in funded state. Cannot confirm receipt.' });
+        if (escrow.status !== 'SHIPPED') {
+            return res.status(400).json({ error: 'Item must be shipped before you can confirm receipt' });
         }
 
         // SECURITY: Verify buyerToken matches the one stored during payment
@@ -409,8 +470,8 @@ router.post('/:id/confirm-crypto', async (req: Request, res: Response) => {
             });
         }
 
-        if (escrow.status !== 'FUNDED') {
-            return res.status(400).json({ error: `Cannot confirm - escrow status is ${escrow.status}` });
+        if (escrow.status !== 'SHIPPED') {
+            return res.status(400).json({ error: `Cannot confirm - item must be shipped first (current: ${escrow.status})` });
         }
 
         // Note: For crypto payments, the buyer releases funds directly on-chain.
@@ -432,40 +493,161 @@ router.post('/:id/confirm-crypto', async (req: Request, res: Response) => {
 });
 
 /**
- * POST /api/escrow/:id/refund
- * Refund a funded escrow back to buyer (dispute resolution)
+ * POST /api/escrow/:id/dispute
+ * Buyer raises a dispute (item not received, wrong item, damaged, etc.)
+ * 
+ * SECURITY: Requires buyerToken or buyerAddress verification
  */
-router.post('/:id/refund', async (req: Request, res: Response) => {
+router.post('/:id/dispute', async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const { reason } = req.body;
+        const { buyerToken, buyerAddress, reason } = req.body;
+
+        if (!reason) {
+            return res.status(400).json({ error: 'Dispute reason is required' });
+        }
 
         const escrow = await getEscrowById(id);
         if (!escrow) {
             return res.status(404).json({ error: 'Escrow not found' });
         }
 
+        // Verify buyer identity (either fiat buyerToken or crypto buyerAddress)
+        const isValidFiatBuyer = buyerToken && escrow.buyerToken === buyerToken;
+        const isValidCryptoBuyer = buyerAddress &&
+            escrow.buyerAddress?.toLowerCase() === buyerAddress.toLowerCase();
+
+        if (!isValidFiatBuyer && !isValidCryptoBuyer) {
+            return res.status(403).json({
+                error: 'Only the buyer can raise a dispute. Provide valid buyerToken or buyerAddress.'
+            });
+        }
+
+        // Can only dispute SHIPPED status (before auto-release)
+        if (escrow.status !== 'SHIPPED') {
+            return res.status(400).json({
+                error: `Cannot dispute escrow in ${escrow.status} status. Disputes only allowed after shipping.`
+            });
+        }
+
+        await markEscrowDisputed(id, reason);
+
+        console.log(`Dispute raised for escrow ${id}: ${reason}`);
+
+        res.json({
+            success: true,
+            message: 'Dispute has been raised. Our team will review and contact both parties.',
+            escrowId: id,
+            disputeReason: reason
+        });
+    } catch (error: any) {
+        console.error('Dispute error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * POST /api/escrow/:id/resolve-dispute
+ * Protocol resolves a dispute (admin only - should have proper auth in production)
+ * 
+ * NOTE: In production, this should have admin authentication middleware
+ */
+router.post('/:id/resolve-dispute', async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { resolution, notes, adminKey } = req.body;
+
+        // Basic admin auth (in production, use proper auth middleware)
+        const expectedKey = process.env.ADMIN_KEY;
+        if (!expectedKey || adminKey !== expectedKey) {
+            return res.status(403).json({ error: 'Unauthorized - admin access required' });
+        }
+
+        if (!resolution || !['REFUNDED', 'RELEASED'].includes(resolution)) {
+            return res.status(400).json({ error: 'Resolution must be REFUNDED or RELEASED' });
+        }
+
+        const escrow = await getEscrowById(id);
+        if (!escrow) {
+            return res.status(404).json({ error: 'Escrow not found' });
+        }
+
+        if (escrow.status !== 'DISPUTED') {
+            return res.status(400).json({ error: 'Escrow is not in disputed status' });
+        }
+
+        // Execute on-chain action
+        if (escrow.escrowId !== null) {
+            try {
+                const wallet = getWalletManager();
+                if (resolution === 'REFUNDED') {
+                    await wallet.refundEscrow(escrow.escrowId);
+                } else {
+                    await wallet.releaseFunds(escrow.escrowId);
+                }
+            } catch (err: any) {
+                console.warn(`On-chain dispute resolution failed: ${err.message}`);
+            }
+        }
+
+        await resolveDispute(id, resolution, notes || 'No notes provided');
+
+        console.log(`Dispute resolved for escrow ${id}: ${resolution}`);
+
+        res.json({
+            success: true,
+            message: `Dispute resolved - funds ${resolution === 'REFUNDED' ? 'refunded to buyer' : 'released to seller'}`,
+            resolution
+        });
+    } catch (error: any) {
+        console.error('Resolve dispute error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * POST /api/escrow/:id/refund
+ * Refund a funded escrow back to buyer (before shipping - seller cancels)
+ * 
+ * NOTE: After shipping, buyer must raise a dispute instead
+ */
+router.post('/:id/refund', async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { reason, sellerAddress } = req.body;
+
+        const escrow = await getEscrowById(id);
+        if (!escrow) {
+            return res.status(404).json({ error: 'Escrow not found' });
+        }
+
+        // Verify seller is requesting the refund
+        if (!sellerAddress || escrow.sellerAddress.toLowerCase() !== sellerAddress.toLowerCase()) {
+            return res.status(403).json({ error: 'Only the seller can initiate a refund' });
+        }
+
+        // Can only refund FUNDED status (seller hasn't shipped yet)
         if (escrow.status !== 'FUNDED') {
-            return res.status(400).json({ error: 'Can only refund funded escrows' });
+            return res.status(400).json({
+                error: `Cannot refund escrow in ${escrow.status} status. ` +
+                    (escrow.status === 'SHIPPED' ? 'Item already shipped - buyer must raise dispute.' : '')
+            });
         }
 
         // Try to refund on-chain
         if (escrow.escrowId !== null) {
             try {
                 const wallet = getWalletManager();
-                // Note: wallet.refundEscrow would need to be added to wallet.ts
-                // For now, we just mark as refunded in DB
-                console.log(`Would refund escrow ${escrow.escrowId} on-chain`);
+                await wallet.refundEscrow(escrow.escrowId);
+                console.log(`Refund executed on-chain for escrow ${escrow.escrowId}`);
             } catch (err: any) {
                 console.warn(`On-chain refund failed: ${err.message}`);
             }
         }
 
-        // Import and use markEscrowRefunded from db
-        const { markEscrowRefunded } = await import('../lib/db');
         await markEscrowRefunded(id);
 
-        console.log(`Escrow ${id} refunded to buyer. Reason: ${reason || 'Not specified'}`);
+        console.log(`Escrow ${id} refunded to buyer by seller. Reason: ${reason || 'Not specified'}`);
 
         res.json({
             success: true,
@@ -473,6 +655,71 @@ router.post('/:id/refund', async (req: Request, res: Response) => {
         });
     } catch (error: any) {
         console.error('Refund escrow error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * GET /api/escrow/:id/status
+ * Get detailed escrow status including timeouts
+ */
+router.get('/:id/status', async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const escrow = await getEscrowById(id);
+
+        if (!escrow) {
+            return res.status(404).json({ error: 'Escrow not found' });
+        }
+
+        const now = new Date();
+        let timeoutInfo: any = null;
+
+        if (escrow.status === 'SHIPPED' && escrow.autoReleaseAt) {
+            const autoReleaseDate = new Date(escrow.autoReleaseAt);
+            const msRemaining = autoReleaseDate.getTime() - now.getTime();
+            const daysRemaining = Math.max(0, Math.ceil(msRemaining / (24 * 60 * 60 * 1000)));
+
+            timeoutInfo = {
+                type: 'AUTO_RELEASE',
+                autoReleaseAt: escrow.autoReleaseAt,
+                daysRemaining,
+                message: daysRemaining > 0
+                    ? `Auto-release in ${daysRemaining} days if buyer doesn't confirm`
+                    : 'Ready for auto-release'
+            };
+        } else if (escrow.status === 'FUNDED' && escrow.fundedAt) {
+            const deadline = new Date(escrow.fundedAt);
+            deadline.setDate(deadline.getDate() + ESCROW_TIMEOUTS.SHIPPING_DEADLINE_DAYS);
+            const msRemaining = deadline.getTime() - now.getTime();
+            const daysRemaining = Math.max(0, Math.ceil(msRemaining / (24 * 60 * 60 * 1000)));
+
+            timeoutInfo = {
+                type: 'SHIPPING_DEADLINE',
+                deadline: deadline.toISOString(),
+                daysRemaining,
+                message: `Seller must ship within ${daysRemaining} days or buyer gets auto-refund`
+            };
+        }
+
+        res.json({
+            id: escrow.id,
+            status: escrow.status,
+            timestamps: {
+                created: escrow.createdAt,
+                funded: escrow.fundedAt,
+                shipped: escrow.shippedAt,
+                delivered: escrow.deliveredAt,
+                released: escrow.releasedAt,
+                disputed: escrow.disputedAt
+            },
+            timeout: timeoutInfo,
+            shipmentProof: escrow.shipmentProof,
+            disputeReason: escrow.disputeReason,
+            disputeResolution: escrow.disputeResolution
+        });
+    } catch (error: any) {
+        console.error('Get status error:', error);
         res.status(500).json({ error: error.message });
     }
 });

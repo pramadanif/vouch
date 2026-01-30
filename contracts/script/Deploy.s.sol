@@ -14,13 +14,13 @@ contract DeployVouch is Script {
         
         vm.startBroadcast(deployerPrivateKey);
 
-        // Deploy MockUSDC (for non-IDR currencies)
-        MockUSDC usdc = new MockUSDC();
-        console.log("MockUSDC deployed to:", address(usdc));
+        // Use existing MockUSDC (USDC)
+        MockUSDC usdc = MockUSDC(0xdFa2072b41C353f2C345548A19BF830A4C771024);
+        console.log("Using existing MockUSDC at:", address(usdc));
 
-        // Deploy MockIDRX (for IDR currency)  
-        MockUSDC idrx = new MockUSDC();
-        console.log("MockIDRX deployed to:", address(idrx));
+        // Use existing MockUSDC (IDRX)  
+        MockUSDC idrx = MockUSDC(0xb6Ed9eEAEebc4aC2ac4FC961045EC32B55D77185);
+        console.log("Using existing MockIDRX at:", address(idrx));
 
         // Deploy VouchEscrow with deployer as protocol wallet
         // NOTE: createEscrow is now called by SELLER directly, not protocol

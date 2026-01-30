@@ -10,6 +10,7 @@ dotenv.config();
 import escrowRoutes from './routes/escrow';
 import paymentRoutes from './routes/payment';
 import faucetRoutes from './routes/faucet';
+import { startCronJobs } from './lib/cron';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -26,6 +27,7 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json());
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 // Request logging
 app.use((req, res, next) => {
@@ -119,12 +121,27 @@ app.listen(PORT, () => {
 Endpoints:
   POST /api/escrow/create        - Create escrow
   GET  /api/escrow/:id           - Get escrow
+  GET  /api/escrow/:id/status    - Get detailed status with timeouts
   GET  /api/escrow/seller/:addr  - List seller escrows
   POST /api/escrow/:id/create-invoice - Create payment invoice
-  POST /api/escrow/:id/release   - Release funds
+  POST /api/escrow/:id/ship      - Upload shipment proof
+  POST /api/escrow/:id/confirm   - Buyer confirms receipt (fiat)
+  POST /api/escrow/:id/confirm-crypto - Buyer confirms receipt (crypto)
+  POST /api/escrow/:id/dispute   - Buyer raises dispute
+  POST /api/escrow/:id/resolve-dispute - Admin resolves dispute
+  POST /api/escrow/:id/refund    - Seller initiates refund
   POST /api/payment/xendit/callback - Xendit webhook
   POST /api/payment/simulate/:id - Simulate payment (demo)
+
+Security Features:
+  ✅ Buyer confirmation required for fund release
+  ✅ Auto-release after 14 days (protects seller)
+  ✅ Auto-refund after 30 days (protects buyer)
+  ✅ Dispute system for conflicts
   `);
+
+  // Start cron jobs for automatic timeouts
+  startCronJobs();
 });
 
 export default app;

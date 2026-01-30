@@ -14,9 +14,13 @@ enum EscrowStatus {
   CREATED
   WAITING_PAYMENT
   FUNDED
-  RELEASED
+  SHIPPED     // Seller has shipped the item
+  DELIVERED   // Buyer confirmed receipt (NEW: critical for safe escrow)
+  RELEASED    // Funds sent to seller
+  DISPUTED    // Dispute raised (NEW)
   REFUNDED
   CANCELLED
+  EXPIRED     // Timeout expired (NEW)
 }
 
 model Escrow {
@@ -26,21 +30,38 @@ model Escrow {
   buyerAddress     String?      @map("buyer_address")
   buyerToken       String?      @map("buyer_token") // Session token for buyer verification
   itemName         String       @map("item_name")
-  itemDescription  String?      @map("item_description") // NEW: Item description field
+  itemDescription  String?      @map("item_description")
   itemImage        String?      @map("item_image")
+  shipmentProof    String?      @map("shipment_proof") // URL or tracking number
   amountUsdc       String       @map("amount_usdc")
   amountIdr        String       @map("amount_idr")
   fiatCurrency     String       @default("IDR") @map("fiat_currency")
   releaseDuration  Int          @map("release_duration") // in seconds
-  releaseTime      Int?         @map("release_time") // Unix timestamp
+  releaseTime      Int?         @map("release_time") // Unix timestamp for auto-release eligibility
   status           EscrowStatus @default(CREATED)
   xenditInvoiceId  String?      @map("xendit_invoice_id")
   xenditInvoiceUrl String?      @map("xendit_invoice_url")
   txHash           String?      @map("tx_hash")
+  
+  // State transition timestamps (NEW: for audit trail and timeout logic)
+  fundedAt         DateTime?    @map("funded_at")
+  shippedAt        DateTime?    @map("shipped_at")
+  deliveredAt      DateTime?    @map("delivered_at")
+  releasedAt       DateTime?    @map("released_at")
+  disputedAt       DateTime?    @map("disputed_at")
+  
+  // Dispute tracking (NEW)
+  disputeReason    String?      @map("dispute_reason")
+  disputeResolution String?     @map("dispute_resolution")
+  
+  // Auto-release configuration (NEW)
+  autoReleaseAt    DateTime?    @map("auto_release_at") // Calculated: shippedAt + 14 days
+  
   createdAt        DateTime     @default(now()) @map("created_at")
   updatedAt        DateTime     @updatedAt @map("updated_at")
 
   @@index([sellerAddress])
   @@index([status])
+  @@index([autoReleaseAt]) // For cron job queries
   @@map("escrows")
 }

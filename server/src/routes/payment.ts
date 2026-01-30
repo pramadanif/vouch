@@ -21,7 +21,7 @@ async function processPaymentSuccess(escrowId: string, invoiceId?: string) {
     if (!escrow) throw new Error('Escrow not found');
 
     // Already processed?
-    if (escrow.status === 'FUNDED' || escrow.status === 'RELEASED') {
+    if (['FUNDED', 'SHIPPED', 'DELIVERED', 'RELEASED'].includes(escrow.status)) {
         return { processed: false, reason: 'already_processed', buyerToken: escrow.buyerToken };
     }
 

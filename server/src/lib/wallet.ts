@@ -4,13 +4,19 @@ import { ethers } from 'ethers';
 const ESCROW_ABI = [
     "function createEscrow(address seller, address token, uint256 amount, uint256 releaseTime) external returns (uint256 escrowId)",
     "function markFunded(uint256 escrowId, address buyer) external",
+    "function markShipped(uint256 escrowId) external",
     "function releaseFunds(uint256 escrowId) external",
-    "function getEscrow(uint256 escrowId) external view returns (address seller, address buyer, address token, uint256 amount, uint256 releaseTime, bool funded, bool released, bool cancelled)",
+    "function refundEscrow(uint256 escrowId) external",
+    "function confirmDelivery(uint256 escrowId) external",
+    "function getEscrow(uint256 escrowId) external view returns (address seller, address buyer, address token, uint256 amount, uint256 releaseTime, bool funded, bool shipped, bool released, bool cancelled)",
     "function getEscrowStatus(uint256 escrowId) external view returns (string memory status)",
     "function escrowCounter() external view returns (uint256)",
     "event EscrowCreated(uint256 indexed escrowId, address indexed seller, uint256 amount, uint256 releaseTime)",
     "event EscrowFunded(uint256 indexed escrowId, address indexed buyer, address token, uint256 amount)",
-    "event EscrowReleased(uint256 indexed escrowId, address indexed seller, uint256 amount)"
+    "event EscrowShipped(uint256 indexed escrowId)",
+    "event EscrowDelivered(uint256 indexed escrowId)",
+    "event EscrowReleased(uint256 indexed escrowId, address indexed seller, uint256 amount)",
+    "event EscrowRefunded(uint256 indexed escrowId, address indexed buyer, uint256 amount)"
 ];
 
 // ERC20 ABI (for USDC approval)
@@ -149,7 +155,19 @@ class WalletManager {
         const tx = await this.escrowContract.markFunded(escrowId, buyer);
         const receipt = await tx.wait();
 
-        console.log(`Escrow ${escrowId} marked funded, tx=${receipt.hash}`);
+        return receipt.hash;
+    }
+
+    /**
+     * Mark escrow as shipped (Protocol wallet action)
+     */
+    async markShipped(escrowId: number): Promise<string> {
+        console.log(`Marking escrow ${escrowId} as shipped`);
+
+        const tx = await this.escrowContract.markShipped(escrowId);
+        const receipt = await tx.wait();
+
+        console.log(`Escrow ${escrowId} marked shipped, tx=${receipt.hash}`);
 
         return receipt.hash;
     }
@@ -164,6 +182,20 @@ class WalletManager {
         const receipt = await tx.wait();
 
         console.log(`Escrow ${escrowId} released, tx=${receipt.hash}`);
+
+        return receipt.hash;
+    }
+
+    /**
+     * Refund escrow to buyer (for dispute resolution or seller cancellation)
+     */
+    async refundEscrow(escrowId: number): Promise<string> {
+        console.log(`Refunding escrow ${escrowId} to buyer`);
+
+        const tx = await this.escrowContract.refundEscrow(escrowId);
+        const receipt = await tx.wait();
+
+        console.log(`Escrow ${escrowId} refunded, tx=${receipt.hash}`);
 
         return receipt.hash;
     }
@@ -185,6 +217,7 @@ class WalletManager {
         amount: string; // Returns raw wei string, caller handles decimals
         releaseTime: number;
         funded: boolean;
+        shipped: boolean;
         released: boolean;
         cancelled: boolean;
     }> {
@@ -196,8 +229,9 @@ class WalletManager {
             amount: result[3].toString(),
             releaseTime: Number(result[4]),
             funded: result[5],
-            released: result[6],
-            cancelled: result[7]
+            shipped: result[6],
+            released: result[7],
+            cancelled: result[8]
         };
     }
 

@@ -12,40 +12,85 @@ export default function ThumbnailPage() {
     ];
 
     return (
-        <div className="w-screen h-screen bg-white flex items-center justify-center overflow-hidden font-sans">
-            {/* Background */}
-            <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-40 bg-center z-0"></div>
-            <div className="absolute inset-0 bg-gradient-to-b from-white via-transparent to-white/50 z-0"></div>
-            <div className="absolute top-[-10%] right-[-5%] w-[40vw] h-[40vw] bg-blue-100/50 rounded-full blur-[120px]"></div>
-            <div className="absolute bottom-[-10%] left-[-5%] w-[30vw] h-[30vw] bg-emerald-100/50 rounded-full blur-[100px]"></div>
+        <div className="w-screen h-screen bg-brand-surface overflow-hidden font-sans relative">
+            {/* Ambient Background */}
+            <div className="absolute inset-0 bg-noise opacity-30 z-[1] pointer-events-none"></div>
+            <div className="absolute inset-0 bg-gradient-mesh opacity-20 z-0"></div>
 
-            {/* Content */}
-            <div className="relative z-10 flex items-center gap-16 max-w-7xl px-16">
-                {/* Left: Text */}
-                <div className="flex-1 flex flex-col items-start gap-6">
-                    <div className="flex items-center gap-3">
-                        <img src="/logo.png" alt="Vouch" className="w-14 h-14 object-contain" />
-                        <span className="text-3xl font-bold text-slate-900">Vouch</span>
+            {/* Accents */}
+            <div className="absolute top-[-20%] right-[-10%] w-[50vw] h-[50vw] bg-brand-accent/20 rounded-full blur-[120px] animate-pulse-soft"></div>
+            <div className="absolute bottom-[-20%] left-[-10%] w-[40vw] h-[40vw] bg-brand-action/20 rounded-full blur-[120px] animate-pulse-soft" style={{ animationDelay: '1s' }}></div>
+
+            {/* Content Container */}
+            <div className="relative z-10 w-full h-full flex flex-col md:flex-row items-center justify-center gap-12 md:gap-24 px-8 md:px-16 max-w-[1600px] mx-auto">
+
+                {/* Left: Text Content */}
+                <div className="flex-1 flex flex-col items-start gap-8 max-w-2xl animate-fade-up">
+                    <div className="flex items-center gap-4 bg-white/50 backdrop-blur-md px-6 py-3 rounded-full border border-brand-border/50 shadow-soft">
+                        <img src="/logo.png" alt="Vouch" className="w-10 h-10 object-contain drop-shadow-sm" />
+                        <span className="text-2xl font-bold text-brand-primary tracking-tight">Vouch</span>
                     </div>
-                    <h1 className="text-6xl font-extrabold text-slate-900 leading-[1.1]">
+
+                    <h1 className="text-6xl md:text-8xl font-extrabold text-brand-primary leading-[1.05] tracking-tight drop-shadow-sm">
                         Sell in DMs. <br />
-                        <span className="text-blue-600">Get Paid Safely.</span>
+                        <span className="text-transparent bg-clip-text bg-gradient-corporate">
+                            Get Paid Safely.
+                        </span>
                     </h1>
-                    <p className="text-xl text-slate-600 max-w-lg">
-                        Vouch is the decentralized escrow layer for Instagram, WhatsApp, and TikTok.
+
+                    <p className="text-xl md:text-2xl text-brand-secondary max-w-xl leading-relaxed font-medium">
+                        The decentralized escrow layer for <span className="text-brand-primary font-semibold">Instagram</span>, <span className="text-brand-primary font-semibold">WhatsApp</span>, and <span className="text-brand-primary font-semibold">TikTok</span>.
                     </p>
+
+                    <div className="flex items-center gap-4 mt-2">
+                        <div className="flex items-center space-x-[-12px]">
+                            {[1, 2, 3, 4].map((i) => (
+                                <div key={i} className="w-12 h-12 rounded-full border-4 border-white shadow-md bg-brand-ice overflow-hidden relative">
+                                    <img
+                                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${i + 10}`}
+                                        alt="User"
+                                        className="w-full h-full object-cover"
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                        <div className="text-sm font-semibold text-brand-primary">
+                            <span className="text-brand-action">10,000+</span> secured deals
+                        </div>
+                    </div>
                 </div>
 
-                {/* Right: Phone (Smaller like Hero) */}
-                <div className="relative scale-[0.85] origin-center">
-                    <div className="absolute inset-0 bg-blue-500/15 blur-[60px] rounded-full -z-10"></div>
-                    <DemoChatPhone
-                        role="seller"
-                        contactName="Buyer"
-                        contactImage="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=100&h=100"
-                        initialMessages={THUMBNAIL_MESSAGES}
-                        script={[]}
-                    />
+                {/* Right: Phone Demo */}
+                <div className="relative scale-[0.9] md:scale-100 origin-center animate-fade-up" style={{ animationDelay: '0.2s' }}>
+                    {/* Glowing Backdrop for Phone */}
+                    <div className="absolute inset-0 bg-gradient-glow opacity-30 blur-[60px] rounded-[3rem] -z-10 animate-pulse-soft"></div>
+                    <div className="absolute -inset-4 bg-brand-primary/5 blur-[40px] rounded-[4rem] -z-20"></div>
+
+                    {/* Phone Container with Float Animation */}
+                    <div className="animate-float">
+                        <DemoChatPhone
+                            role="seller"
+                            contactName="Buyer"
+                            contactImage="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150"
+                            initialMessages={THUMBNAIL_MESSAGES}
+                            script={[]}
+                        />
+                    </div>
+
+                    {/* Floating Badge */}
+                    <div className="absolute -right-8 top-20 bg-white/90 backdrop-blur-xl p-4 rounded-2xl shadow-card border border-white/50 animate-bounce-gentle">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center">
+                                <svg className="w-6 h-6 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                            </div>
+                            <div>
+                                <p className="text-xs text-brand-secondary font-semibold uppercase tracking-wider">Status</p>
+                                <p className="text-sm font-bold text-brand-primary">Payment Secured</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

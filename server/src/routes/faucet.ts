@@ -59,8 +59,8 @@ router.post('/', async (req, res) => {
         } else {
             // Send tokens (USDC or IDRX)
             const tokenAddress = type === 'usdc'
-                ? process.env.MOCK_USDC_ADDRESS || '0xB7c78ceCB25a1c40b3fa3382bAf3F34c9b5bdD66'
-                : process.env.MOCK_IDRX_ADDRESS || '0xDfef62cf7516508B865440E5819e5435e69adceb';
+                ? process.env.USDC_ADDRESS || '0xdfa2072b41c353f2c345548a19bf830a4c771024'
+                : process.env.IDRX_ADDRESS || '0xb6ed9eeaeebc4ac2ac4fc961045ec32b55d77185';
 
             const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, wallet);
 
