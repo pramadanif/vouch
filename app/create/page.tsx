@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Copy, Loader2, Check, Clock, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Copy, Loader2, Check, Clock, AlertCircle, Package, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { useAccount, useConnect, useDisconnect, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi';
 import { liskSepolia } from 'wagmi/chains';
@@ -10,6 +10,126 @@ import Button from '@/components/Button';
 import FadeIn from '@/components/ui/FadeIn';
 import { api } from '@/lib/api';
 import { VOUCH_ESCROW_ADDRESS, VOUCH_ESCROW_ABI, MOCK_USDC_ADDRESS, MOCK_IDRX_ADDRESS } from '@/lib/contracts';
+
+// ShareStep component with polling
+function ShareStep({ 
+    generatedLink, 
+    escrowId, 
+    copied, 
+    handleCopy, 
+    onCreateAnother 
+}: { 
+    generatedLink: string;
+    escrowId: string | null;
+    copied: boolean;
+    handleCopy: () => void;
+    onCreateAnother: () => void;
+}) {
+    const [status, setStatus] = useState<string>('CREATED');
+    const [isPolling, setIsPolling] = useState(true);
+
+    // Poll for escrow status
+    useEffect(() => {
+        if (!escrowId || !isPolling) return;
+
+        const pollStatus = async () => {
+            try {
+                const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/escrow/${escrowId}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setStatus(data.status);
+                    // Stop polling if funded or beyond
+                    if (['FUNDED', 'SHIPPED', 'DELIVERED', 'COMPLETED', 'DISPUTED', 'REFUNDED'].includes(data.status)) {
+                        setIsPolling(false);
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to poll escrow status:', err);
+            }
+        };
+
+        pollStatus(); // Initial fetch
+        const interval = setInterval(pollStatus, 5000); // Poll every 5 seconds
+        return () => clearInterval(interval);
+    }, [escrowId, isPolling]);
+
+    const isFunded = status === 'FUNDED';
+
+    return (
+        <FadeIn className="max-w-lg mx-auto">
+            <div className="bg-white rounded-2xl shadow-2xl p-10 text-center">
+                {isFunded ? (
+                    <>
+                        {/* FUNDED notification */}
+                        <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-6 border-2 border-green-200 animate-pulse">
+                            <Package size={32} className="text-green-600" />
+                        </div>
+                        <h2 className="text-2xl font-bold text-green-700 mb-3">🎉 Payment Received!</h2>
+                        <p className="text-brand-secondary mb-6">
+                            Buyer has paid! Now ship the item and upload shipment proof on your dashboard.
+                        </p>
+
+                        <div className="bg-green-50 border border-green-200 rounded-xl p-5 mb-6">
+                            <div className="flex items-center justify-center gap-3 text-green-700">
+                                <AlertCircle size={20} />
+                                <span className="font-semibold">Action Required</span>
+                            </div>
+                            <p className="text-sm text-green-600 mt-2">
+                                Go to dashboard to upload shipment proof
+                            </p>
+                        </div>
+
+                        <Link href="/dashboard">
+                            <Button variant="primary" size="lg" className="w-full">
+                                <span className="flex items-center justify-center gap-2">
+                                    Go to Dashboard <ArrowRight size={18} />
+                                </span>
+                            </Button>
+                        </Link>
+                    </>
+                ) : (
+                    <>
+                        {/* Waiting for payment */}
+                        <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6 border border-blue-100">
+                            <Check size={32} className="text-blue-600" />
+                        </div>
+                        <h2 className="text-2xl font-bold text-brand-primary mb-3">Link Created!</h2>
+                        <p className="text-brand-secondary mb-4">Share this link with your buyer to receive payment.</p>
+
+                        {/* Status indicator */}
+                        <div className="flex items-center justify-center gap-2 text-sm text-brand-secondary mb-6">
+                            <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></div>
+                            Waiting for buyer payment...
+                        </div>
+
+                        <div className="bg-brand-surfaceHighlight p-4 rounded-xl flex items-center gap-3 mb-6 border border-brand-border/50">
+                            <code className="flex-1 text-sm text-brand-action font-medium truncate bg-white px-3 py-2 rounded-lg">{generatedLink}</code>
+                            <button
+                                onClick={handleCopy}
+                                className={`p-3 rounded-lg transition-colors ${copied ? 'bg-green-100 text-green-700' : 'bg-white text-brand-secondary hover:text-brand-primary border border-brand-border/50'}`}
+                            >
+                                {copied ? <Check size={18} /> : <Copy size={18} />}
+                            </button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <Button
+                                variant="outline"
+                                size="lg"
+                                onClick={onCreateAnother}
+                            >
+                                Create Another
+                            </Button>
+                            <Link href="/dashboard">
+                                <Button variant="primary" size="lg" className="w-full">Dashboard</Button>
+                            </Link>
+                        </div>
+                    </>
+                )}
+            </div>
+        </FadeIn>
+    );
+}
 
 export default function CreateLinkPage() {
     const [step, setStep] = useState<'connect' | 'create' | 'share'>('connect');
@@ -24,6 +144,10 @@ export default function CreateLinkPage() {
     const [amount, setAmount] = useState('');
     const [fiatCurrency, setFiatCurrency] = useState<'IDR' | 'SGD' | 'MYR' | 'THB' | 'PHP' | 'VND'>('IDR');
     const [releaseDuration, setReleaseDuration] = useState(86400);
+    
+    // Track escrow status for notification
+    const [escrowId, setEscrowId] = useState<string | null>(null);
+    const [escrowStatus, setEscrowStatus] = useState<string | null>(null);
 
     // SEA currency configurations with flags (USDC rates as of Jan 2026)
     const currencyConfig: Record<string, { symbol: string; name: string; usdcRate: number; flag: string }> = {
@@ -191,6 +315,7 @@ export default function CreateLinkPage() {
                 });
 
                 setGeneratedLink(result.paymentLink);
+                setEscrowId(result.escrow.id); // Store escrow ID for polling
                 setStep('share');
                 setPendingEscrowData(null);
             } catch (err: any) {
@@ -287,21 +412,28 @@ export default function CreateLinkPage() {
                                         <div className="w-10 h-10 bg-brand-ice/30 rounded-lg flex items-center justify-center flex-shrink-0 text-brand-action font-bold">1</div>
                                         <div>
                                             <h3 className="font-semibold text-brand-primary">Create Link</h3>
-                                            <p className="text-sm text-brand-secondary">Fill in product details and price</p>
+                                            <p className="text-sm text-brand-secondary">Fill in product details and price, sign transaction</p>
                                         </div>
                                     </div>
                                     <div className="flex items-start gap-4 p-5 bg-white/60 backdrop-blur-sm rounded-xl border border-brand-border/50 shadow-sm">
                                         <div className="w-10 h-10 bg-brand-ice/30 rounded-lg flex items-center justify-center flex-shrink-0 text-brand-action font-bold">2</div>
                                         <div>
-                                            <h3 className="font-semibold text-brand-primary">Share with Buyer</h3>
-                                            <p className="text-sm text-brand-secondary">Send the link via chat or social media</p>
+                                            <h3 className="font-semibold text-brand-primary">Share & Wait Payment</h3>
+                                            <p className="text-sm text-brand-secondary">Send link to buyer, wait for payment</p>
                                         </div>
                                     </div>
                                     <div className="flex items-start gap-4 p-5 bg-white/60 backdrop-blur-sm rounded-xl border border-brand-border/50 shadow-sm">
                                         <div className="w-10 h-10 bg-brand-ice/30 rounded-lg flex items-center justify-center flex-shrink-0 text-brand-action font-bold">3</div>
                                         <div>
+                                            <h3 className="font-semibold text-brand-primary">Ship & Upload Proof</h3>
+                                            <p className="text-sm text-brand-secondary">After payment, ship item and upload proof</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-start gap-4 p-5 bg-white/60 backdrop-blur-sm rounded-xl border border-brand-border/50 shadow-sm">
+                                        <div className="w-10 h-10 bg-brand-ice/30 rounded-lg flex items-center justify-center flex-shrink-0 text-brand-action font-bold">4</div>
+                                        <div>
                                             <h3 className="font-semibold text-brand-primary">Get Paid</h3>
-                                            <p className="text-sm text-brand-secondary">Funds released after buyer confirms</p>
+                                            <p className="text-sm text-brand-secondary">Funds released when buyer confirms delivery</p>
                                         </div>
                                     </div>
                                 </div>
@@ -463,38 +595,20 @@ export default function CreateLinkPage() {
                         </FadeIn>
                     </div>
                 ) : (
-                    <FadeIn className="max-w-lg mx-auto">
-                        <div className="bg-white rounded-2xl shadow-2xl p-10 text-center">
-                            <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-6 border border-green-100">
-                                <Check size={32} className="text-green-600" />
-                            </div>
-                            <h2 className="text-2xl font-bold text-brand-primary mb-3">Link Created!</h2>
-                            <p className="text-brand-secondary mb-8">Share this link with your buyer to receive payment.</p>
-
-                            <div className="bg-brand-surfaceHighlight p-4 rounded-xl flex items-center gap-3 mb-6 border border-brand-border/50">
-                                <code className="flex-1 text-sm text-brand-action font-medium truncate bg-white px-3 py-2 rounded-lg">{generatedLink}</code>
-                                <button
-                                    onClick={handleCopy}
-                                    className={`p-3 rounded-lg transition-colors ${copied ? 'bg-green-100 text-green-700' : 'bg-white text-brand-secondary hover:text-brand-primary border border-brand-border/50'}`}
-                                >
-                                    {copied ? <Check size={18} /> : <Copy size={18} />}
-                                </button>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <Button
-                                    variant="outline"
-                                    size="lg"
-                                    onClick={() => { setStep('create'); setItemName(''); setAmount(''); setGeneratedLink(''); }}
-                                >
-                                    Create Another
-                                </Button>
-                                <Link href="/dashboard">
-                                    <Button variant="primary" size="lg" className="w-full">Dashboard</Button>
-                                </Link>
-                            </div>
-                        </div>
-                    </FadeIn>
+                    <ShareStep 
+                        generatedLink={generatedLink}
+                        escrowId={escrowId}
+                        copied={copied}
+                        handleCopy={handleCopy}
+                        onCreateAnother={() => { 
+                            setStep('create'); 
+                            setItemName(''); 
+                            setAmount(''); 
+                            setGeneratedLink(''); 
+                            setEscrowId(null); 
+                            setEscrowStatus(null); 
+                        }}
+                    />
                 )}
             </main>
         </div>
